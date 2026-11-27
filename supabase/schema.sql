@@ -676,3 +676,30 @@ end $$;
 -- Thi MOF khong tinh vao so buoi vang
 update public.class_type_sessions set counts_absent = false
  where content = 'Thi MOF';
+
+-- Loai lop mau: LPFC-Parttime (7 ngay hoc, 14 buoi, nghi T7 CN). Thi MOF khong tinh vang. Chi tao neu chua co.
+do $$
+declare tid uuid;
+begin
+  if exists (select 1 from public.class_types where name = 'LPFC-Parttime') then return; end if;
+  insert into public.class_types (name, description)
+  values ('LPFC-Parttime', 'Lộ trình đào tạo LP Parttime, 7 ngày học (nghỉ Thứ Bảy và Chủ Nhật). Sáng 9:00-12:00, chiều 13:30-16:30, học online qua MS Teams. M1: học từ ngày 1 (chưa có chứng chỉ). M2: học từ ngày 5, buổi Compliance (đã có chứng chỉ)')
+  returning id into tid;
+  insert into public.class_type_sessions (class_type_id, session_no, day_no, shift, content, counts_absent)
+  select tid, v.n, v.d, v.sh, v.c, v.ca from (values
+    (1, 1, 'sang',  'Tổng quan Asahi Life. Tổng quan ngành bảo hiểm', true),
+    (2, 1, 'chieu', 'Kiến thức chung ngành bảo hiểm', true),
+    (3, 2, 'sang',  'Pháp luật trong kinh doanh bảo hiểm', true),
+    (4, 2, 'chieu', 'Nghiệp vụ bảo hiểm, quyền và nghĩa vụ doanh nghiệp', true),
+    (5, 3, 'sang',  'Ôn tập và giải đề', true),
+    (6, 3, 'chieu', 'Kiểm tra đánh giá điều kiện dự thi MOF', true),
+    (7, 4, 'sang',  'Thi MOF', false),
+    (8, 4, 'chieu', 'Thi MOF', false),
+    (9, 5, 'sang',  'Compliance và Quy tắc ứng xử', true),
+    (10, 5, 'chieu', 'Chính sách thu nhập LP và UM', true),
+    (11, 6, 'sang',  'Kokoro 101 và Omotenashi 101. Hoạch định tài chính. Ứng dụng AI', true),
+    (12, 6, 'chieu', 'Sản phẩm UL', true),
+    (13, 7, 'sang',  'Hướng dẫn ePOS Tutorial và Practice', true),
+    (14, 7, 'chieu', 'Kiểm tra đánh giá. Ký hợp đồng và Tốt nghiệp', true)
+  ) as v(n, d, sh, c, ca);
+end $$;
