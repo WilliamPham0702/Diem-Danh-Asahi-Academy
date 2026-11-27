@@ -112,8 +112,8 @@
 
   const TABS = {
     student: [['scan', 'Điểm danh'], ['history', 'Lịch sử'], ['account', 'Tài khoản']],
-    teacher: [['classes', 'Lớp học'], ['schedule', 'Lịch dạy'], ['roster', 'Học viên'], ['reports', 'Báo cáo'], ['account', 'Tài khoản']],
-    admin: [['classes', 'Lớp học'], ['schedule', 'Lịch dạy'], ['roster', 'Học viên'], ['reports', 'Báo cáo'], ['types', 'Loại lớp'],
+    teacher: [['schedule', 'Lịch dạy'], ['classes', 'Lớp học'], ['roster', 'Học viên'], ['reports', 'Báo cáo'], ['account', 'Tài khoản']],
+    admin: [['schedule', 'Lịch dạy'], ['classes', 'Lớp học'], ['roster', 'Học viên'], ['reports', 'Báo cáo'], ['types', 'Loại lớp'],
       ['staff', 'Nhân sự'], ['account', 'Tài khoản']],
   };
   const SUBROUTES = { class: 'classes', session: 'classes' };
@@ -170,7 +170,7 @@
       <div class="auth-sub">Điểm danh lớp học</div>
     </div>`;
   }
-  const APP_VERSION = '2026.11.28-4';
+  const APP_VERSION = '2026.11.28-5';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Life - Training Academy · Hệ thống điểm danh lớp học · v${APP_VERSION}</p></div></footer>`;
@@ -632,7 +632,7 @@
     const attSet = new Set(att.map((a) => a.session_id + '|' + a.student_code));
     const maxAbsent = cls.class_types?.max_absent;
     const absent = {}; roster.forEach((r) => { absent[r.student_code] = absentCount(sessions, r.student_code, attSet); });
-    const teachers = await q(db.from('profiles').select('id, full_name, email').in('role', ['admin', 'teacher']).order('full_name'));
+    const teachers = await q(db.rpc('list_teachers'));
     const warned = maxAbsent == null ? [] : roster.filter((r) => absent[r.student_code] > maxAbsent);
     roster.sort((a, b) => String(a.students?.full_name).localeCompare(String(b.students?.full_name), 'vi'));
 
@@ -655,7 +655,7 @@
             <td>${s.session_no}</td><td>${esc(s.content)}</td>
             <td><input type="date" value="${s.session_date || ''}" data-date="${s.id}" style="width:150px"></td>
             <td>${s.shift ? SHIFT_LABEL[s.shift] : ''}</td>
-            <td><select data-teacher="${s.id}" style="min-width:150px"><option value="">(Chưa gán)</option>${teachers.map((t) => `<option value="${t.id}"${t.id === s.teacher_id ? ' selected' : ''}>${esc(t.full_name || t.email)}</option>`).join('')}</select></td>
+            <td><select data-teacher="${s.id}" style="min-width:150px"><option value="">(Chưa gán)</option>${teachers.map((t) => `<option value="${esc(t.email)}"${t.email === String(s.teacher_email || '').toLowerCase() ? ' selected' : ''}>${esc(t.full_name || t.email)}${t.has_account ? '' : ' (chưa tạo TK)'}</option>`).join('')}</select></td>
             <td>${s.closed ? '<span class="badge gray">Đã đóng</span>' : s.opened_at ? '<span class="badge ok">Đã mở</span>' : '<span class="badge warn">Chưa mở</span>'}</td>
             <td>${perSession[s.id] || 0}/${total}</td>
             <td class="act">
@@ -686,7 +686,7 @@
     $$('[data-date]', el).forEach((i) => { i.onchange = () => busy(null, async () => {
       await q(db.from('class_sessions').update({ session_date: i.value || null }).eq('id', i.dataset.date)); toast('Đã lưu ngày học', 'ok'); }); });
     $$('[data-teacher]', el).forEach((sel) => { sel.onchange = () => busy(null, async () => {
-      await q(db.from('class_sessions').update({ teacher_id: sel.value || null }).eq('id', sel.dataset.teacher)); toast('Đã đổi giảng viên', 'ok'); }); });
+      await q(db.from('class_sessions').update({ teacher_email: sel.value || null }).eq('id', sel.dataset.teacher)); toast('Đã đổi giảng viên', 'ok'); }); });
     $$('[data-close]', el).forEach((b) => { b.onclick = () => busy(b, async () => {
       await q(db.from('class_sessions').update({ closed: true }).eq('id', b.dataset.close)); render(); }); });
     $$('[data-reopen]', el).forEach((b) => { b.onclick = () => busy(b, async () => {
@@ -695,8 +695,12 @@
       await q(db.rpc('reset_device', { p_student_code: b.dataset.reset })); toast('Đã đặt lại thiết bị', 'ok'); render(); }); });
     $$('[data-resetpw]', el).forEach((b) => { b.onclick = () => resetPassword(b, b.dataset.resetpw); });
     $$('[data-rm]', el).forEach((b) => { b.onclick = () => {
-      if (!confirm('Xóa học viên này khỏi lớp?')) return;
-      busy(b, async () => { await q(db.from('class_students').delete().eq('class_id', id).eq('student_code', b.dataset.rm)); render(); }); }; });
+      if (!confirm('Xóa học viên này khỏi lớp? Dữ liệu điểm danh của học viên trong lớp này cũng bị xóa.')) return;
+      busy(b, async () => {
+        const sids = sessions.map((x) => x.id);
+        if (sids.length) await q(db.from('attendance').delete().eq('student_code', b.dataset.rm).in('session_id', sids));
+        await q(db.from('class_students').delete().eq('class_id', id).eq('student_code', b.dataset.rm));
+        toast('Đã xóa học viên khỏi lớp', 'ok'); render(); }); }; });
   }
 
   function resetPassword(btn, code) {
@@ -722,11 +726,27 @@
       $('#af', m).onsubmit = (e) => {
         e.preventDefault();
         busy($('#ok', m), async () => {
+          const existing = new Set((await q(db.from('class_students').select('student_code').eq('class_id', classId))).map((x) => x.student_code));
           let codes = parseCodes($('#ac', m).value);
+          let dup = 0;
           const f = $('#ax', m).files[0];
-          if (f) { const r = await importStudents(f); codes = codes.concat(r.codes); }
+          if (f) {
+            const { rows } = await readStudentsFile(f); // file lỗi thì báo lỗi, không thêm gì
+            const fresh = rows.filter((r) => !existing.has(r.code));
+            dup += rows.length - fresh.length; // đã có trong lớp: không nhập lại
+            for (let i = 0; i < fresh.length; i += 400) {
+              const { error } = await db.from('students').upsert(fresh.slice(i, i + 400), { onConflict: 'code' });
+              if (error) throw error;
+            }
+            codes = codes.concat(fresh.map((r) => r.code));
+          }
           codes = Array.from(new Set(codes));
-          if (!codes.length) throw new Error('Chưa có mã học viên nào');
+          const already = codes.filter((c) => existing.has(c)); dup += already.length;
+          codes = codes.filter((c) => !existing.has(c));
+          if (!codes.length) {
+            if (dup) { close(); toast(`Tất cả ${dup} học viên đã có trong lớp, không thêm lại`, 'ok'); return; }
+            throw new Error('Chưa có mã học viên nào');
+          }
           const miss = await missingCodes(codes);
           const ok = codes.filter((c) => !miss.includes(c));
           if (ok.length) {
@@ -735,7 +755,7 @@
             if (error) throw error;
           }
           close();
-          toast(`Đã thêm ${ok.length} học viên`, 'ok');
+          toast(`Đã thêm ${ok.length} học viên${dup ? `, bỏ qua ${dup} học viên đã có trong lớp` : ''}`, 'ok');
           if (miss.length) toast(`Không tìm thấy mã: ${miss.slice(0, 8).join(', ')}`, 'err');
           render();
         });
@@ -898,7 +918,7 @@
       const gridEnd = new Date(gridStart); gridEnd.setDate(gridStart.getDate() + weeks * 7 - 1);
       const rows = await q(db.from('class_sessions')
         .select('id, session_no, content, session_date, shift, closed, opened_at, classes(id, name)')
-        .eq('teacher_id', me.id).gte('session_date', ymd(gridStart)).lte('session_date', ymd(gridEnd))
+        .eq('teacher_email', String(me.email || '').toLowerCase()).gte('session_date', ymd(gridStart)).lte('session_date', ymd(gridEnd))
         .order('session_date').order('session_no'));
       const by = {}; rows.forEach((r) => { (by[r.session_date] = by[r.session_date] || []).push(r); });
 

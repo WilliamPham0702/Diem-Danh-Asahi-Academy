@@ -95,8 +95,9 @@ create table if not exists public.class_sessions (
 alter table public.class_sessions add column if not exists shift text;
 alter table public.class_sessions add column if not exists counts_absent boolean not null default true;
 -- Giang vien day buoi nay (mac dinh = nguoi tao lop, co the doi)
-alter table public.class_sessions add column if not exists teacher_id uuid references public.profiles (id) on delete set null;
-create index if not exists class_sessions_teacher_idx on public.class_sessions (teacher_id, session_date);
+-- (email trong danh sach allowed_staff, giang vien chua tao tai khoan van gan duoc)
+alter table public.class_sessions add column if not exists teacher_email text;
+create index if not exists class_sessions_teacher_email_idx on public.class_sessions (teacher_email, session_date);
 alter table public.class_sessions drop constraint if exists cs_shift_chk;
 alter table public.class_sessions add constraint cs_shift_chk check (shift in ('sang', 'chieu'));
 
@@ -146,11 +147,32 @@ returns boolean language sql stable security definer set search_path = public as
 $$;
 
 -- Quan ly lop HOAC la giang vien duoc gan day it nhat 1 buoi cua lop
+create or replace function public.my_email()
+returns text language sql stable security definer set search_path = public as $$
+  select lower(email) from public.profiles where id = auth.uid()
+$$;
+revoke all on function public.my_email() from public, anon;
+grant execute on function public.my_email() to authenticated;
+
 create or replace function public.can_access_class(cid uuid)
 returns boolean language sql stable security definer set search_path = public as $$
   select public.can_manage_class(cid)
-      or exists (select 1 from public.class_sessions s where s.class_id = cid and s.teacher_id = auth.uid())
+      or exists (select 1 from public.class_sessions s
+                  where s.class_id = cid and s.teacher_email is not null and lower(s.teacher_email) = public.my_email())
 $$;
+
+-- Danh sach giang vien lay tu danh sach admin (allowed_staff), ke ca nguoi chua tao tai khoan. Khong tra ve ma moi.
+create or replace function public.list_teachers()
+returns table (email text, full_name text, role text, has_account boolean)
+language sql stable security definer set search_path = public as $$
+  select lower(a.email), a.full_name, a.role,
+         exists (select 1 from public.profiles p where lower(p.email) = lower(a.email))
+    from public.allowed_staff a
+   where public.is_staff()
+   order by a.full_name, a.email
+$$;
+revoke all on function public.list_teachers() from public, anon;
+grant execute on function public.list_teachers() to authenticated;
 revoke all on function public.can_access_class(uuid) from public, anon;
 grant execute on function public.can_access_class(uuid) to authenticated;
 
@@ -427,11 +449,11 @@ begin
   values (trim(p_name), p_type, p_start, auth.uid())
   returning id into cid;
 
-  insert into public.class_sessions (class_id, session_no, content, session_date, shift, counts_absent, teacher_id)
+  insert into public.class_sessions (class_id, session_no, content, session_date, shift, counts_absent, teacher_email)
   select cid, t.session_no, t.content,
          case when t.day_no is null then p_start + (t.session_no - 1)
               else public.add_workdays(p_start, t.day_no - 1) end,
-         t.shift, t.counts_absent, auth.uid()
+         t.shift, t.counts_absent, public.my_email()
     from public.class_type_sessions t
    where t.class_type_id = p_type;
 
@@ -717,5 +739,6 @@ begin
 end $$;
 
 -- Lop da tao truoc do: gan nguoi tao lop lam giang vien
-update public.class_sessions cs set teacher_id = c.created_by
-  from public.classes c where c.id = cs.class_id and cs.teacher_id is null and c.created_by is not null;
+update public.class_sessions cs set teacher_email = lower(p.email)
+  from public.classes c join public.profiles p on p.id = c.created_by
+ where c.id = cs.class_id and cs.teacher_email is null;
