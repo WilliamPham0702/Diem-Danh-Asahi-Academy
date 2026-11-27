@@ -231,11 +231,11 @@
     schedule: ['予定', 'Lịch dạy', 'Các buổi dạy được phân công cho bạn', 'Section%20-%20Welcome%20screen.webp', 'center'],
     classes: ['教室', 'Lớp học', 'Quản lý lớp, buổi học và điểm danh', 'Tea-House-Image.webp', 'center bottom'],
     roster: ['学生', 'Học viên', 'Danh sách học viên và các lớp đã tham gia', '390d3d809a7cb45ac603107d5c810a7294519656.webp', 'center'],
-    reports: ['報告', 'Báo cáo', 'Xuất báo cáo điểm danh theo lớp', 'overplay-bg.webp', 'right center'],
+    reports: ['報告', 'Báo cáo', 'Xuất báo cáo điểm danh theo lớp', 'room-poster.webp', 'center 45%'],
     staff: ['職員', 'Nhân sự', 'Giảng viên và quản trị viên', 'c9e9b35046980a9f83bf5618ab3f357477d20263.webp', 'center'],
     scan: ['出席', 'Điểm danh', 'Quét mã QR của giảng viên để điểm danh', 'room-poster.webp', 'center 60%'],
     history: ['履歴', 'Lịch sử điểm danh', 'Các buổi bạn đã tham gia', '89a85df788bb142a6104330626a97798db15c1d0.webp', 'center'],
-    account: ['設定', 'Tài khoản', 'Thông tin và mật khẩu', 'card-bg.webp', 'center'],
+    account: ['設定', 'Tài khoản', 'Thông tin và mật khẩu', 'Tea-House-Image.webp', 'center 80%'],
     class: ['教室', 'Chi tiết lớp', 'Các buổi học và học viên', 'Tea-House-Image.webp', 'center bottom'],
     session: ['出席', 'Chi tiết buổi học', 'Danh sách điểm danh của buổi học', 'room-poster.webp', 'center 60%'],
   };
@@ -247,7 +247,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-17';
+  const APP_VERSION = '2026.11.28-18';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Life - Training Academy · Hệ thống điểm danh lớp học</p>
