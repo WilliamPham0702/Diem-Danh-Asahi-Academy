@@ -856,23 +856,27 @@
     const isAdmin = me.role === 'admin';
     el.innerHTML = `<div class="card">
       <div class="row between"><h2>Học viên</h2>
-        <div class="row"><button class="btn ghost" id="tpl">Tải file mẫu</button>
-          <label class="btn pink" style="margin:0;cursor:pointer">Nhập từ Excel<input id="imp" type="file" accept=".xlsx,.xls,.csv" class="hide"></label></div></div>
+        ${isAdmin ? `<div class="row"><button class="btn ghost" id="tpl">Tải file mẫu</button>
+          <label class="btn pink" style="margin:0;cursor:pointer">Nhập từ Excel<input id="imp" type="file" accept=".xlsx,.xls,.csv" class="hide"></label></div>` : ''}</div>
       <input id="search" placeholder="Tìm theo mã, tên..." style="margin:12px 0">
       <div id="t" class="muted">Đang tải...</div></div>`;
     const students = await fetchAll(() => db.from('students').select('*').order('code'));
     const profs = await fetchAll(() => db.from('profiles').select('id, student_code, device_id, must_change_password').eq('role', 'student').order('id'));
     const pmap = {}; profs.forEach((p) => { if (p.student_code) pmap[p.student_code] = p; });
+    const enr = await fetchAll(() => db.from('class_students').select('student_code, classes(name, created_at)').order('student_code').order('class_id'));
+    const cmap = {};
+    enr.forEach((r) => { if (r.classes?.name) (cmap[r.student_code] = cmap[r.student_code] || []).push(r.classes); });
+    Object.values(cmap).forEach((a) => a.sort((x, y) => (x.created_at < y.created_at ? 1 : -1)));
 
     function draw() {
       const k = norm($('#search').value);
       const list = students.filter((s) => !k || norm(s.code + s.full_name).includes(k));
       const shown = list.slice(0, 300);
       $('#t').innerHTML = `<p class="muted small">${list.length} học viên${list.length > 300 ? ' (hiển thị 300 đầu tiên, hãy tìm kiếm để lọc)' : ''}</p>
-        <div class="tbl-wrap"><table><tr><th>Mã</th><th>Họ tên</th><th>Chức danh</th><th>Tài khoản</th><th></th></tr>
-        ${shown.map((s) => { const p = pmap[s.code]; return `<tr>
-          <td>${esc(s.code)}</td><td>${esc(s.full_name)}</td><td>${esc(s.title)}</td>
-          <td>${p ? (p.must_change_password ? '<span class="badge warn">Chờ đổi mật khẩu</span>' : '<span class="badge ok">Đã kích hoạt</span>') : '<span class="badge gray">Chưa đăng nhập lần đầu</span>'}${p?.device_id ? ' <span class="badge">Đã gắn thiết bị</span>' : ''}</td>
+        <div class="tbl-wrap"><table><tr><th>STT</th><th>Mã</th><th>Họ tên</th><th>Chức danh</th><th>Lớp đã tham gia</th><th></th></tr>
+        ${shown.map((s, i) => { const p = pmap[s.code]; return `<tr>
+          <td>${i + 1}</td><td>${esc(s.code)}</td><td>${esc(s.full_name)}</td><td>${esc(s.title)}</td>
+          <td>${(cmap[s.code] || []).map((c) => `<span class="badge">${esc(c.name)}</span>`).join(' ') || '<span class="muted">Chưa có lớp</span>'}</td>
           <td class="act">${p ? `<button class="btn sm ghost" data-resetpw="${esc(s.code)}">Đặt lại MK</button>` : ''}
             ${p?.device_id ? `<button class="btn sm ghost" data-reset="${esc(s.code)}">Đặt lại thiết bị</button>` : ''}
             ${isAdmin && p ? `<button class="btn sm danger" data-deluser="${p.id}">Xóa tài khoản</button>` : ''}
@@ -890,7 +894,7 @@
     }
     draw();
     $('#search').oninput = draw;
-    $('#tpl').onclick = downloadTemplate;
+    if (isAdmin) { $('#tpl').onclick = downloadTemplate;
     $('#imp').onchange = (e) => {
       const f = e.target.files[0]; if (!f) return;
       busy(null, async () => {
@@ -898,7 +902,7 @@
         toast(`Đã nhập ${r.count} học viên${r.skipped ? `, bỏ qua ${r.skipped} dòng thiếu thông tin` : ''}`, 'ok');
         render();
       });
-    };
+    }; }
   }
 
   // ================================================================ BÁO CÁO
