@@ -537,11 +537,12 @@
       .order('created_at', { ascending: false }));
     $('#t').outerHTML = rows.length ? `<div class="tbl-wrap"><table>
       <tr><th>Tên lớp</th><th>Loại lớp</th><th>Ngày bắt đầu</th><th>Ngày tốt nghiệp</th><th>Học viên</th><th>Số buổi</th><th></th></tr>
-      ${rows.map((c) => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.class_types?.name || '')}</td>
+      ${rows.map((c) => `<tr class="rowlink" data-open="${c.id}"><td><a href="#/class/${c.id}"><b>${esc(c.name)}</b></a></td><td>${esc(c.class_types?.name || '')}</td>
         <td>${esc(fmtDate(c.start_date))}</td><td>${esc(fmtDate(c.graduation_date))}</td><td>${c.class_students?.[0]?.count ?? 0}</td>
         <td>${c.class_sessions?.[0]?.count ?? 0}</td>
         <td class="act"><a class="btn sm" href="#/class/${c.id}">Mở lớp</a></td></tr>`).join('')}</table></div>`
       : '<p class="muted">Chưa có lớp nào. Bấm "Tạo lớp" để bắt đầu.</p>';
+    $$('[data-open]', el).forEach((tr) => { tr.onclick = (e) => { if (!e.target.closest('a')) nav('class/' + tr.dataset.open); }; });
   }
 
   async function openCreateClass() {
@@ -590,13 +591,14 @@
           const f = $('#cx', m).files[0];
           if (f) { const r = await importStudents(f); codes = codes.concat(r.codes); if (r.skipped) toast(`Bỏ qua ${r.skipped} dòng thiếu thông tin`); }
           codes = Array.from(new Set(codes));
+          if (!codes.length && !confirm('Chưa có học viên nào (chưa chọn file Excel). Vẫn tạo lớp? Sau đó có thể thêm học viên trong lớp.')) return;
           const id = await q(db.rpc('create_class', {
             p_name: $('#cn', m).value.trim().toUpperCase(), p_type: $('#ct', m).value, p_start: $('#cd', m).value,
             p_codes: codes, p_grad: $('#cg', m).value || null,
           }));
           const miss = codes.length ? await missingCodes(codes) : [];
           close();
-          toast('Đã tạo lớp', 'ok');
+          toast(codes.length ? `Đã tạo lớp, ${codes.length - miss.length} học viên` : 'Đã tạo lớp', 'ok');
           if (miss.length) toast(`Không tìm thấy mã: ${miss.slice(0, 8).join(', ')}${miss.length > 8 ? '...' : ''}`, 'err');
           nav('class/' + id);
         });

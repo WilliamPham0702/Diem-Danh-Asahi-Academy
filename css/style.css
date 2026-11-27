@@ -182,3 +182,8 @@ body:has(.auth) { background: var(--grad) fixed; }
 .grid2 > div { min-width: 0; }
 input[type="date"] { min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; }
 input[type="date"] { -webkit-appearance: none; appearance: none; display: block; }
+
+/* dong lop hoc bam duoc ca dong */
+tr.rowlink { cursor: pointer; }
+tr.rowlink:active { background: #eef1f8; }
+tr.rowlink a { color: inherit; text-decoration: none; }
