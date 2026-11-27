@@ -112,8 +112,8 @@
 
   const TABS = {
     student: [['scan', 'Điểm danh'], ['history', 'Lịch sử'], ['account', 'Tài khoản']],
-    teacher: [['classes', 'Lớp học'], ['roster', 'Học viên'], ['reports', 'Báo cáo'], ['account', 'Tài khoản']],
-    admin: [['classes', 'Lớp học'], ['roster', 'Học viên'], ['reports', 'Báo cáo'], ['types', 'Loại lớp'],
+    teacher: [['classes', 'Lớp học'], ['schedule', 'Lịch dạy'], ['roster', 'Học viên'], ['reports', 'Báo cáo'], ['account', 'Tài khoản']],
+    admin: [['classes', 'Lớp học'], ['schedule', 'Lịch dạy'], ['roster', 'Học viên'], ['reports', 'Báo cáo'], ['types', 'Loại lớp'],
       ['staff', 'Nhân sự'], ['account', 'Tài khoản']],
   };
   const SUBROUTES = { class: 'classes', session: 'classes' };
@@ -353,7 +353,7 @@
     const el = $('#main');
     const views = {
       scan: viewScan, history: viewHistory, account: viewAccount,
-      classes: viewClasses, class: viewClass, session: viewSession,
+      classes: viewClasses, schedule: viewSchedule, class: viewClass, session: viewSession,
       roster: viewRoster, reports: viewReports, types: viewTypes, staff: viewStaff,
     };
     Promise.resolve(views[route](el, param)).catch((e) => {
@@ -631,30 +631,30 @@
     const attSet = new Set(att.map((a) => a.session_id + '|' + a.student_code));
     const maxAbsent = cls.class_types?.max_absent;
     const absent = {}; roster.forEach((r) => { absent[r.student_code] = absentCount(sessions, r.student_code, attSet); });
+    const teachers = await q(db.from('profiles').select('id, full_name, email').in('role', ['admin', 'teacher']).order('full_name'));
     const warned = maxAbsent == null ? [] : roster.filter((r) => absent[r.student_code] > maxAbsent);
     roster.sort((a, b) => String(a.students?.full_name).localeCompare(String(b.students?.full_name), 'vi'));
 
     el.innerHTML = `
       <p><a href="#/classes">&larr; Danh sách lớp</a></p>
       <div class="card">
-        <div class="row between">
-          <div><h2>${esc(cls.name)}</h2>
-            <span class="muted">${esc(cls.class_types?.name || '')} · bắt đầu ${esc(fmtDate(cls.start_date))}${cls.graduation_date ? ' · tốt nghiệp ' + esc(fmtDate(cls.graduation_date)) : ''}</span></div>
-          <div class="row"><button class="btn ghost" id="exp">Xuất Excel</button>
-            <button class="btn ghost" id="add">+ Thêm học viên</button>
-            <button class="btn danger" id="del">Xóa lớp</button></div>
-        </div>
+        <div><h2>${esc(cls.name)}</h2>
+          <span class="muted">${esc(cls.class_types?.name || '')} · bắt đầu ${esc(fmtDate(cls.start_date))}${cls.graduation_date ? ' · tốt nghiệp ' + esc(fmtDate(cls.graduation_date)) : ''}</span></div>
+        <div class="btnrow"><button class="btn ghost" id="exp">Xuất Excel</button>
+          <button class="btn ghost" id="add">+ Thêm học viên</button>
+          <button class="btn danger" id="del">Xóa lớp</button></div>
       </div>
       ${warned.length ? `<div class="card" style="border-color:#f1c2c8;background:#fff6f7">
         <h3 style="color:var(--bad)">⚠ Cảnh báo: ${warned.length} học viên vắng quá ${maxAbsent} buổi</h3>
         <div class="small">${warned.map((r) => `<b>${esc(r.students?.full_name || r.student_code)}</b> (${esc(r.student_code)}): vắng ${absent[r.student_code]} buổi`).join('<br>')}</div></div>` : ''}
       <div class="card"><h3>Các buổi học</h3>
         <div class="tbl-wrap"><table>
-          <tr><th>Buổi</th><th>Nội dung</th><th>Ngày học</th><th>Ca</th><th>Trạng thái</th><th>Có mặt</th><th></th></tr>
+          <tr><th>Buổi</th><th>Nội dung</th><th>Ngày học</th><th>Ca</th><th>Giảng viên dạy</th><th>Trạng thái</th><th>Có mặt</th><th></th></tr>
           ${sessions.map((s) => `<tr>
             <td>${s.session_no}</td><td>${esc(s.content)}</td>
             <td><input type="date" value="${s.session_date || ''}" data-date="${s.id}" style="width:150px"></td>
             <td>${s.shift ? SHIFT_LABEL[s.shift] : ''}</td>
+            <td><select data-teacher="${s.id}" style="min-width:150px"><option value="">(Chưa gán)</option>${teachers.map((t) => `<option value="${t.id}"${t.id === s.teacher_id ? ' selected' : ''}>${esc(t.full_name || t.email)}</option>`).join('')}</select></td>
             <td>${s.closed ? '<span class="badge gray">Đã đóng</span>' : s.opened_at ? '<span class="badge ok">Đã mở</span>' : '<span class="badge warn">Chưa mở</span>'}</td>
             <td>${perSession[s.id] || 0}/${total}</td>
             <td class="act">
@@ -684,6 +684,8 @@
     };
     $$('[data-date]', el).forEach((i) => { i.onchange = () => busy(null, async () => {
       await q(db.from('class_sessions').update({ session_date: i.value || null }).eq('id', i.dataset.date)); toast('Đã lưu ngày học', 'ok'); }); });
+    $$('[data-teacher]', el).forEach((sel) => { sel.onchange = () => busy(null, async () => {
+      await q(db.from('class_sessions').update({ teacher_id: sel.value || null }).eq('id', sel.dataset.teacher)); toast('Đã đổi giảng viên', 'ok'); }); });
     $$('[data-close]', el).forEach((b) => { b.onclick = () => busy(b, async () => {
       await q(db.from('class_sessions').update({ closed: true }).eq('id', b.dataset.close)); render(); }); });
     $$('[data-reopen]', el).forEach((b) => { b.onclick = () => busy(b, async () => {
@@ -874,6 +876,64 @@
     await loadToken(); await loadCount();
     timers.push(setInterval(loadToken, 10000));
     timers.push(setInterval(loadCount, 4000));
+  }
+
+
+  // ================================================================ LỊCH DẠY (dương lịch)
+  async function viewSchedule(el) {
+    const pad = (n) => String(n).padStart(2, '0');
+    const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const today = ymd(new Date());
+    let cur = new Date(); cur.setDate(1);
+    let selected = today;
+    const MONTH = (d) => `Tháng ${d.getMonth() + 1}/${d.getFullYear()}`;
+
+    async function draw() {
+      const first = new Date(cur.getFullYear(), cur.getMonth(), 1);
+      const last = new Date(cur.getFullYear(), cur.getMonth() + 1, 0);
+      const offset = (first.getDay() + 6) % 7; // thứ Hai là cột đầu
+      const gridStart = new Date(first); gridStart.setDate(1 - offset);
+      const weeks = Math.ceil((offset + last.getDate()) / 7);
+      const gridEnd = new Date(gridStart); gridEnd.setDate(gridStart.getDate() + weeks * 7 - 1);
+      const rows = await q(db.from('class_sessions')
+        .select('id, session_no, content, session_date, shift, closed, opened_at, classes(id, name)')
+        .eq('teacher_id', me.id).gte('session_date', ymd(gridStart)).lte('session_date', ymd(gridEnd))
+        .order('session_date').order('session_no'));
+      const by = {}; rows.forEach((r) => { (by[r.session_date] = by[r.session_date] || []).push(r); });
+
+      let cells = '';
+      for (let i = 0; i < weeks * 7; i++) {
+        const d = new Date(gridStart); d.setDate(gridStart.getDate() + i);
+        const key = ymd(d); const list = by[key] || [];
+        const out = d.getMonth() !== cur.getMonth();
+        cells += `<button type="button" class="cal-cell${out ? ' out' : ''}${key === today ? ' today' : ''}${key === selected ? ' sel' : ''}" data-day="${key}">
+          <span class="cal-n">${d.getDate()}</span>
+          <span class="cal-dots">${list.map((r) => `<i class="${r.shift === 'chieu' ? 'c' : 's'}"></i>`).join('')}</span></button>`;
+      }
+      const day = by[selected] || [];
+      const dd = new Date(selected + 'T00:00:00');
+      const WD = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];
+      el.innerHTML = `<div class="card">
+        <div class="row between"><h2 style="margin:0">Lịch dạy</h2>
+          <div class="row" style="gap:6px"><button class="btn ghost sm" id="pm">&lsaquo;</button>
+            <b style="min-width:110px;text-align:center">${MONTH(cur)}</b>
+            <button class="btn ghost sm" id="nm">&rsaquo;</button>
+            <button class="btn ghost sm" id="tm">Hôm nay</button></div></div>
+        <div class="cal">${['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map((x) => `<div class="cal-h">${x}</div>`).join('')}${cells}</div>
+        <div class="small muted" style="margin-top:8px"><i class="dot s"></i> Sáng &nbsp; <i class="dot c"></i> Chiều</div></div>
+        <div class="card"><h3>${WD[dd.getDay()]}, ${fmtDate(selected)}</h3>
+          ${day.length ? day.map((r) => `<div class="sch-item">
+            <div><b>${esc(r.classes?.name)}</b> · Buổi ${r.session_no}${r.shift ? ' · ' + SHIFT_LABEL[r.shift] : ''}
+              <div class="small muted">${esc(r.content || '')}</div></div>
+            <div class="btnrow">${r.closed ? '<span class="badge gray">Đã đóng</span>' : `<a class="btn pink sm" href="#/qr/${r.id}">Mở QR điểm danh</a>`}
+              <a class="btn ghost sm" href="#/session/${r.id}">Chi tiết</a></div></div>`).join('')
+            : '<p class="muted">Không có buổi dạy nào trong ngày này.</p>'}</div>`;
+      $('#pm').onclick = () => { cur = new Date(cur.getFullYear(), cur.getMonth() - 1, 1); draw(); };
+      $('#nm').onclick = () => { cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1); draw(); };
+      $('#tm').onclick = () => { cur = new Date(); cur.setDate(1); selected = today; draw(); };
+      $$('[data-day]', el).forEach((b) => { b.onclick = () => { selected = b.dataset.day; draw(); }; });
+    }
+    await draw();
   }
 
   // ================================================================ DANH SÁCH HỌC VIÊN

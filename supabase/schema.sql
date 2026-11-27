@@ -94,6 +94,9 @@ create table if not exists public.class_sessions (
 );
 alter table public.class_sessions add column if not exists shift text;
 alter table public.class_sessions add column if not exists counts_absent boolean not null default true;
+-- Giang vien day buoi nay (mac dinh = nguoi tao lop, co the doi)
+alter table public.class_sessions add column if not exists teacher_id uuid references public.profiles (id) on delete set null;
+create index if not exists class_sessions_teacher_idx on public.class_sessions (teacher_id, session_date);
 alter table public.class_sessions drop constraint if exists cs_shift_chk;
 alter table public.class_sessions add constraint cs_shift_chk check (shift in ('sang', 'chieu'));
 
@@ -141,6 +144,15 @@ returns boolean language sql stable security definer set search_path = public as
   select public.is_admin()
       or exists (select 1 from public.classes c where c.id = cid and c.created_by = auth.uid())
 $$;
+
+-- Quan ly lop HOAC la giang vien duoc gan day it nhat 1 buoi cua lop
+create or replace function public.can_access_class(cid uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.can_manage_class(cid)
+      or exists (select 1 from public.class_sessions s where s.class_id = cid and s.teacher_id = auth.uid())
+$$;
+revoke all on function public.can_access_class(uuid) from public, anon;
+grant execute on function public.can_access_class(uuid) to authenticated;
 
 -- ---------------------------------------------------------------------
 -- 3. Dang ky tai khoan: chi cho email nam trong danh sach
@@ -211,7 +223,7 @@ begin
     join public.classes c on c.id = s.class_id
    where s.id = p_session;
   if not found then raise exception 'SESSION_NOT_FOUND'; end if;
-  if not public.can_manage_class(cs.class_id) then raise exception 'FORBIDDEN'; end if;
+  if not public.can_access_class(cs.class_id) then raise exception 'FORBIDDEN'; end if;
   if cs.closed then raise exception 'SESSION_CLOSED'; end if;
 
   update public.class_sessions
@@ -415,11 +427,11 @@ begin
   values (trim(p_name), p_type, p_start, auth.uid())
   returning id into cid;
 
-  insert into public.class_sessions (class_id, session_no, content, session_date, shift, counts_absent)
+  insert into public.class_sessions (class_id, session_no, content, session_date, shift, counts_absent, teacher_id)
   select cid, t.session_no, t.content,
          case when t.day_no is null then p_start + (t.session_no - 1)
               else public.add_workdays(p_start, t.day_no - 1) end,
-         t.shift, t.counts_absent
+         t.shift, t.counts_absent, auth.uid()
     from public.class_type_sessions t
    where t.class_type_id = p_type;
 
@@ -558,7 +570,7 @@ create policy cts_admin on public.class_type_sessions
 drop policy if exists classes_select on public.classes;
 create policy classes_select on public.classes
   for select to authenticated using (
-    public.can_manage_class(id)
+    public.can_access_class(id)
     or exists (select 1 from public.class_students cs
                 where cs.class_id = classes.id and cs.student_code = public.my_student_code())
   );
@@ -573,7 +585,7 @@ create policy classes_delete on public.classes
 drop policy if exists cs_select on public.class_students;
 create policy cs_select on public.class_students
   for select to authenticated using (
-    public.can_manage_class(class_id) or student_code = public.my_student_code()
+    public.can_access_class(class_id) or student_code = public.my_student_code()
   );
 drop policy if exists cs_insert on public.class_students;
 create policy cs_insert on public.class_students
@@ -586,13 +598,13 @@ create policy cs_delete on public.class_students
 drop policy if exists sessions_select on public.class_sessions;
 create policy sessions_select on public.class_sessions
   for select to authenticated using (
-    public.can_manage_class(class_id)
+    public.can_access_class(class_id)
     or exists (select 1 from public.class_students cs
                 where cs.class_id = class_sessions.class_id and cs.student_code = public.my_student_code())
   );
 drop policy if exists sessions_update on public.class_sessions;
 create policy sessions_update on public.class_sessions
-  for update to authenticated using (public.can_manage_class(class_id)) with check (public.can_manage_class(class_id));
+  for update to authenticated using (public.can_access_class(class_id)) with check (public.can_access_class(class_id));
 
 -- attendance: hoc vien xem cua minh; staff xem/diem danh tay/huy trong lop minh quan ly
 drop policy if exists attendance_select on public.attendance;
@@ -600,20 +612,20 @@ create policy attendance_select on public.attendance
   for select to authenticated using (
     student_code = public.my_student_code()
     or exists (select 1 from public.class_sessions s
-                where s.id = attendance.session_id and public.can_manage_class(s.class_id))
+                where s.id = attendance.session_id and public.can_access_class(s.class_id))
   );
 drop policy if exists attendance_insert on public.attendance;
 create policy attendance_insert on public.attendance
   for insert to authenticated with check (
     source = 'manual'
     and exists (select 1 from public.class_sessions s
-                 where s.id = attendance.session_id and public.can_manage_class(s.class_id))
+                 where s.id = attendance.session_id and public.can_access_class(s.class_id))
   );
 drop policy if exists attendance_delete on public.attendance;
 create policy attendance_delete on public.attendance
   for delete to authenticated using (
     exists (select 1 from public.class_sessions s
-             where s.id = attendance.session_id and public.can_manage_class(s.class_id))
+             where s.id = attendance.session_id and public.can_access_class(s.class_id))
   );
 
 -- ---------------------------------------------------------------------
@@ -703,3 +715,7 @@ begin
     (14, 7, 'chieu', 'Kiểm tra đánh giá. Ký hợp đồng và Tốt nghiệp', true)
   ) as v(n, d, sh, c, ca);
 end $$;
+
+-- Lop da tao truoc do: gan nguoi tao lop lam giang vien
+update public.class_sessions cs set teacher_id = c.created_by
+  from public.classes c where c.id = cs.class_id and cs.teacher_id is null and c.created_by is not null;
