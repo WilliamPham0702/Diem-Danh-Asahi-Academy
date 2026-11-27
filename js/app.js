@@ -18,6 +18,7 @@
     SESSION_CLOSED: 'Buổi học đã đóng điểm danh',
     SESSION_NOT_FOUND: 'Không tìm thấy buổi học',
     CANNOT_DELETE_SELF: 'Không thể xóa tài khoản của chính mình',
+    OUT_OF_SESSION: 'Đã qua buổi học này, chỉ admin mới mở lại được (Reset QR)',
     NAME_REQUIRED: 'Vui lòng nhập tên lớp',
     STUDENT_NOT_IN_LIST: 'Mã học viên không có trong danh sách. Hãy liên hệ giảng viên của bạn.',
     INVITE_INVALID: 'Email hoặc mã mời không đúng. Hãy liên hệ admin.',
@@ -31,6 +32,30 @@
     if (/Email not confirmed/i.test(m)) return 'Tài khoản chưa được xác nhận. Cần tắt "Confirm email" trong Supabase (xem README)';
     if (/at least 6/i.test(m)) return 'Mật khẩu cần ít nhất 6 ký tự';
     return m;
+  }
+
+  // Cửa sổ mở QR theo ca (giờ VN): sáng 00:00-12:30, chiều 12:00-17:30, tối 17:00-24:00, không ca: cả ngày
+  function qrOpenable(s) {
+    const now = Date.now();
+    if (s.qr_reset_until && now <= new Date(s.qr_reset_until).getTime()) return true;
+    if (!s.session_date) return false;
+    const d = s.session_date;
+    const at = (t) => new Date(d + 'T' + t + '+07:00').getTime();
+    const next = new Date(new Date(d + 'T00:00:00+07:00').getTime() + 86400000).getTime();
+    const a = s.shift === 'chieu' ? at('12:00:00') : s.shift === 'toi' ? at('17:00:00') : at('00:00:00');
+    const b = s.shift === 'sang' ? at('12:30:00') : s.shift === 'chieu' ? at('17:30:00') : next;
+    return now >= a && now <= b;
+  }
+  function qrButtons(s, withClose) {
+    if (qrOpenable(s)) return `<a class="btn sm pink" href="#/qr/${s.id}">Mở QR</a>`
+      + (withClose && s.opened_at && !s.closed ? ` <button class="btn sm ghost" data-close="${s.id}">Đóng</button>` : '');
+    if (me.role === 'admin') return `<button class="btn sm ghost" data-resetqr="${s.id}">Reset QR</button>`;
+    return '';
+  }
+  function bindResetQR(root) {
+    $$('[data-resetqr]', root).forEach((b) => { b.onclick = () => busy(b, async () => {
+      await q(db.rpc('admin_reset_qr', { p_session: b.dataset.resetqr }));
+      toast('Đã reset QR, có hiệu lực trong buổi hiện tại', 'ok'); nav('qr/' + b.dataset.resetqr); }); });
   }
 
   function toast(msg, type = '') {
@@ -170,7 +195,7 @@
       <div class="auth-sub">Điểm danh lớp học</div>
     </div>`;
   }
-  const APP_VERSION = '2026.11.28-5';
+  const APP_VERSION = '2026.11.28-6';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Life - Training Academy · Hệ thống điểm danh lớp học · v${APP_VERSION}</p></div></footer>`;
@@ -659,9 +684,7 @@
             <td>${s.closed ? '<span class="badge gray">Đã đóng</span>' : s.opened_at ? '<span class="badge ok">Đã mở</span>' : '<span class="badge warn">Chưa mở</span>'}</td>
             <td>${perSession[s.id] || 0}/${total}</td>
             <td class="act">
-              ${s.closed ? `<button class="btn sm ghost" data-reopen="${s.id}">Mở lại</button>`
-                : `<a class="btn sm pink" href="#/qr/${s.id}">Mở QR</a>
-                   <button class="btn sm ghost" data-close="${s.id}">Đóng</button>`}
+              ${qrButtons(s, true)}
               <a class="btn sm" href="#/session/${s.id}">Chi tiết</a></td></tr>`).join('')}
         </table></div></div>
       <div class="card"><h3>Học viên (${total})</h3>
@@ -688,9 +711,8 @@
     $$('[data-teacher]', el).forEach((sel) => { sel.onchange = () => busy(null, async () => {
       await q(db.from('class_sessions').update({ teacher_email: sel.value || null }).eq('id', sel.dataset.teacher)); toast('Đã đổi giảng viên', 'ok'); }); });
     $$('[data-close]', el).forEach((b) => { b.onclick = () => busy(b, async () => {
-      await q(db.from('class_sessions').update({ closed: true }).eq('id', b.dataset.close)); render(); }); });
-    $$('[data-reopen]', el).forEach((b) => { b.onclick = () => busy(b, async () => {
-      await q(db.from('class_sessions').update({ closed: false }).eq('id', b.dataset.reopen)); render(); }); });
+      await q(db.rpc('close_qr', { p_session: b.dataset.close })); render(); }); });
+    bindResetQR(el);
     $$('[data-reset]', el).forEach((b) => { b.onclick = () => busy(b, async () => {
       await q(db.rpc('reset_device', { p_student_code: b.dataset.reset })); toast('Đã đặt lại thiết bị', 'ok'); render(); }); });
     $$('[data-resetpw]', el).forEach((b) => { b.onclick = () => resetPassword(b, b.dataset.resetpw); });
@@ -796,7 +818,7 @@
       <div class="card"><div class="row between">
         <div><h2>Buổi ${sess.session_no}: ${esc(sess.content || '')}</h2>
           <span class="muted">${esc(fmtDate(sess.session_date))}${sess.opened_at ? ' · mở điểm danh lúc ' + esc(fmtTime(sess.opened_at)) : ''}</span></div>
-        ${sess.closed ? '<span class="badge gray">Đã đóng</span>' : `<a class="btn pink" href="#/qr/${id}">Mở QR điểm danh</a>`}</div>
+        ${sess.closed ? '<span class="badge gray">Đã đóng</span> ' : ''}${qrOpenable(sess) ? `<a class="btn pink" href="#/qr/${id}">Mở QR điểm danh</a>` : (me.role === 'admin' ? `<button class="btn ghost" data-resetqr="${id}">Reset QR</button>` : '')}</div>
         <div class="stat" style="margin-top:12px">
           <div class="chip"><b>${stat['Đúng giờ']}</b>Đúng giờ</div><div class="chip"><b>${stat['Muộn']}</b>Muộn</div>
           <div class="chip"><b>${stat['Vắng']}</b>Vắng</div><div class="chip"><b>${roster.length}</b>Tổng</div></div></div>
@@ -808,6 +830,7 @@
           <td class="act">${a ? `<button class="btn sm danger" data-undo="${a.id}">Hủy</button>`
             : `<button class="btn sm ghost" data-manual="${esc(r.student_code)}" data-name="${esc(r.students?.full_name)}">Điểm danh tay</button>`}</td></tr>`).join('')}
       </table></div></div>`;
+    bindResetQR(el);
     $$('[data-manual]', el).forEach((b) => { b.onclick = () => busy(b, async () => {
       await q(db.from('attendance').insert({ session_id: id, student_code: b.dataset.manual, student_name: b.dataset.name, source: 'manual' }));
       render(); }); });
@@ -860,13 +883,30 @@
 
     let stopped = false;
     const timers = [];
-    addCleanup(() => { stopped = true; timers.forEach(clearInterval); document.removeEventListener('visibilitychange', onVis); });
+    let explicitClosed = false;
+    addCleanup(() => {
+      stopped = true; timers.forEach(clearInterval); document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('pagehide', onHide);
+      if (!explicitClosed) db.rpc('close_qr', { p_session: id }).then(() => {}, () => {});
+    });
+    function onHide() {
+      try {
+        db.auth.getSession().then(({ data }) => {
+          const t = data && data.session && data.session.access_token;
+          if (!t) return;
+          fetch(CFG.SUPABASE_URL + '/rest/v1/rpc/close_qr', { method: 'POST', keepalive: true,
+            headers: { apikey: CFG.SUPABASE_ANON_KEY, Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ p_session: id }) });
+        });
+      } catch (_) {}
+    }
+    window.addEventListener('pagehide', onHide);
 
     async function loadToken() {
       if (stopped) return;
       const { data, error } = await db.rpc('get_qr_token', { p_session: id });
-      if (error) {
-        $('#hint').textContent = errMsg(error); $('#hint').style.color = '#ffb3be';
+      if (error || !data || data.error || !data.token) {
+        $('#hint').textContent = errMsg(error || { message: (data && data.error) || 'Lỗi' }); $('#hint').style.color = '#ffb3be';
         timers.forEach(clearInterval); return;
       }
       drawQR($('#cv'), data.token, size);
@@ -890,7 +930,8 @@
     $('#closeSess').onclick = (e) => {
       if (!confirm('Đóng điểm danh buổi này? Học viên sẽ không quét được nữa.')) return;
       busy(e.target, async () => {
-        await q(db.from('class_sessions').update({ closed: true }).eq('id', id));
+        explicitClosed = true;
+        await q(db.rpc('close_qr', { p_session: id }));
         nav('session/' + id);
       });
     };
@@ -917,7 +958,7 @@
       const weeks = Math.ceil((offset + last.getDate()) / 7);
       const gridEnd = new Date(gridStart); gridEnd.setDate(gridStart.getDate() + weeks * 7 - 1);
       const rows = await q(db.from('class_sessions')
-        .select('id, session_no, content, session_date, shift, closed, opened_at, classes(id, name)')
+        .select('id, session_no, content, session_date, shift, closed, opened_at, qr_reset_until, classes(id, name)')
         .eq('teacher_email', String(me.email || '').toLowerCase()).gte('session_date', ymd(gridStart)).lte('session_date', ymd(gridEnd))
         .order('session_date').order('session_no'));
       const by = {}; rows.forEach((r) => { (by[r.session_date] = by[r.session_date] || []).push(r); });
@@ -946,9 +987,10 @@
           ${day.length ? day.map((r) => `<div class="sch-item">
             <div><b>${esc(r.classes?.name)}</b> · Buổi ${r.session_no}${r.shift ? ' · ' + SHIFT_LABEL[r.shift] : ''}
               <div class="small muted">${esc(r.content || '')}</div></div>
-            <div class="btnrow">${r.closed ? '<span class="badge gray">Đã đóng</span>' : `<a class="btn pink sm" href="#/qr/${r.id}">Mở QR điểm danh</a>`}
+            <div class="btnrow">${r.closed ? '<span class="badge gray">Đã đóng</span>' : ''}${qrOpenable(r) ? `<a class="btn pink sm" href="#/qr/${r.id}">Mở QR điểm danh</a>` : (me.role === 'admin' ? `<button class="btn ghost sm" data-resetqr="${r.id}">Reset QR</button>` : '')}
               <a class="btn ghost sm" href="#/session/${r.id}">Chi tiết</a></div></div>`).join('')
             : '<p class="muted">Không có buổi dạy nào trong ngày này.</p>'}</div>`;
+      bindResetQR(el);
       $('#pm').onclick = () => { cur = new Date(cur.getFullYear(), cur.getMonth() - 1, 1); draw(); };
       $('#nm').onclick = () => { cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1); draw(); };
       $('#tm').onclick = () => { cur = new Date(); cur.setDate(1); selected = today; draw(); };

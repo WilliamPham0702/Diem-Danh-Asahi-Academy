@@ -742,3 +742,8 @@ end $$;
 update public.class_sessions cs set teacher_email = lower(p.email)
   from public.classes c join public.profiles p on p.id = c.created_by
  where c.id = cs.class_id and cs.teacher_email is null;
+
+-- ===== QR: quy tắc mở/đóng theo buổi (2026-11-28) =====
+alter table public.class_sessions add column if not exists qr_reset_until timestamptz;
+-- (định nghĩa qr_window, get_qr_token, close_qr, admin_reset_qr, guard_session_update, trigger class_sessions_guard
+--  đã chạy trên Supabase; xem lịch sử commit/chat nếu cần tạo lại từ đầu)
