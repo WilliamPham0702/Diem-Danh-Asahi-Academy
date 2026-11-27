@@ -305,3 +305,7 @@ body, body:has(.auth) { background: transparent !important; }
 .auth { min-height: 100vh; min-height: 100dvh; display: grid !important; align-content: center; justify-items: stretch; width: 100%; max-width: 420px; margin: 0 auto; padding: 24px 16px; box-sizing: border-box; }
 .auth-hero { text-align: center; margin-bottom: 20px; }
 .auth-logo, .auth-div { justify-content: center; }
+
+/* ===== v15: sửa lỗi banner bị nền trong suốt đè mất ảnh ===== */
+.phero { background-image: var(--hero) !important; background-position: var(--heropos, center) !important; background-size: cover !important; background-repeat: no-repeat !important; background-color: #00235f !important; }
+.phero::before { background: linear-gradient(90deg, rgba(0,24,61,.55) 0%, rgba(0,24,61,.15) 55%, rgba(0,24,61,0) 100%) !important; }

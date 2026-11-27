@@ -242,12 +242,12 @@
   function pageHero(route) {
     const h = PAGE_HERO[route] || PAGE_HERO.schedule;
     const first = (me.full_name || '').trim().split(/\s+/).slice(-1)[0] || 'bạn';
-    return `<section class="phero" style="background-image:url('${IMG(h[3])}');background-position:${h[4]}"><div class="phero-in">
+    return `<section class="phero" style="--hero:url('${IMG(h[3])}');--heropos:${h[4]}"><div class="phero-in">
       <div class="phero-jp">${h[0]}</div>
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-14';
+  const APP_VERSION = '2026.11.28-15';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Life - Training Academy · Hệ thống điểm danh lớp học</p>
