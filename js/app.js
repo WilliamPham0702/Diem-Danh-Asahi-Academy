@@ -55,7 +55,7 @@
   function bindResetQR(root) {
     $$('[data-resetqr]', root).forEach((b) => { b.onclick = () => busy(b, async () => {
       await q(db.rpc('admin_reset_qr', { p_session: b.dataset.resetqr }));
-      toast('Đã reset QR, có hiệu lực trong buổi hiện tại', 'ok'); nav('qr/' + b.dataset.resetqr); }); });
+      toast('Đã reset QR: giảng viên được phân công mở lại được trong buổi hiện tại', 'ok'); render(); }); });
   }
 
   function toast(msg, type = '') {
@@ -195,7 +195,7 @@
       <div class="auth-sub">Điểm danh lớp học</div>
     </div>`;
   }
-  const APP_VERSION = '2026.11.28-6';
+  const APP_VERSION = '2026.11.28-7';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Life - Training Academy · Hệ thống điểm danh lớp học · v${APP_VERSION}</p></div></footer>`;
