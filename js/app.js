@@ -970,7 +970,7 @@
 
   // ================================================================ ADMIN: loại lớp
   async function viewTypes(el) {
-    el.innerHTML = '<div class="card"><h2>Loại lớp</h2><p class="muted small">Mỗi loại lớp quy định số buổi và nội dung từng buổi. Khi giảng viên tạo lớp, các buổi được sinh ra theo mẫu này.</p><div id="t">Đang tải...</div></div><div class="card" id="newbox"></div>';
+    el.innerHTML = '<div class="card" id="newbox"></div><div class="card"><h2>Loại lớp</h2><p class="muted small">Mỗi loại lớp quy định số buổi và nội dung từng buổi. Khi giảng viên tạo lớp, các buổi được sinh ra theo mẫu này.</p><div id="t">Đang tải...</div></div>';
     const types = await q(db.from('class_types').select('id, name, description, max_absent, class_type_sessions(session_no, content, day_no, shift)').order('name'));
     $('#t').innerHTML = types.length ? types.map((t) => `<div style="border-top:1px solid var(--line);padding:10px 0">
       <div class="row between"><b>${esc(t.name)}</b> <span><span class="badge">${t.class_type_sessions.length} buổi</span>
