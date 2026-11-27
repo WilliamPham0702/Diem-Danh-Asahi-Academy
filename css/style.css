@@ -289,3 +289,10 @@ body, body:has(.auth) { background: transparent !important; }
 .auth-title, .auth-sub { text-shadow: 0 2px 16px rgba(0,10,40,.5); }
 .foot { background: rgba(0,35,100,.8); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
 .qr-screen { position: relative; z-index: 2; }
+
+/* ===== v13: banner tiêu đề có ảnh riêng từng trang; video động chỉ làm nền phần ruột ===== */
+.phero { background-color: #00235f !important; background-size: cover !important; background-repeat: no-repeat !important; }
+.phero::before { display: block !important; content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(0,24,61,.88) 0%, rgba(0,47,114,.55) 55%, rgba(0,47,114,.25) 100%); }
+.phero::after { display: none !important; }
+.phero-in { min-height: 120px; }
+@media (min-width: 700px) { .phero-in { min-height: 170px; } }
