@@ -250,3 +250,15 @@ main > .card, main > div > .card { animation: fadeup .45s ease both; }
 .tabs a.on { border-bottom-color: var(--navy); }
 .btn { border-radius: 8px; transition: background .15s, transform .1s; }
 .btn:active { transform: scale(.98); }
+
+/* ===== v10: chống tràn ngang trên điện thoại (xoay dọc), video luôn vừa khung ===== */
+html, body { width: 100%; max-width: 100%; overflow-x: hidden; }
+.bgv { width: 100%; height: 100%; max-width: 100%; contain: strict; }
+.bgv-v, .bgv-poster { position: absolute; left: 0; top: 0; right: 0; bottom: 0; inset: 0; width: 100%; height: 100%;
+  min-width: 0; min-height: 0; transform: none; object-fit: cover; object-position: 50% 50%; }
+.auth { width: 100%; max-width: 420px; margin-left: auto; margin-right: auto; overflow-x: clip; }
+.auth > * { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.auth-title { font-size: clamp(28px, 9vw, 40px); overflow-wrap: anywhere; }
+.auth-jp { letter-spacing: clamp(2px, 1.6vw, 6px); }
+.auth .card { overflow: hidden; }
+@media (orientation: portrait) { .bgv-v, .bgv-poster { object-position: 55% 50%; } }
