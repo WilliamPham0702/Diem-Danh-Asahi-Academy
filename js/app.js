@@ -187,11 +187,32 @@
   function logoHtml(h) {
     return `<img class="logo" src="${LOGO_URL}" alt="Asahi Life" height="${h}" onerror="this.outerHTML='<span class=&quot;logo-fb&quot;>Asahi Life</span>'">`;
   }
+  // Video nền động cho toàn bộ web (video trên asahilife.com). Tạo bằng JS để iPhone chịu tự chạy.
+  function initBg() {
+    const host = document.getElementById('bgv');
+    if (!host || document.getElementById('bgvid')) return;
+    const v = document.createElement('video');
+    v.id = 'bgvid';
+    v.muted = true; v.defaultMuted = true; v.loop = true; v.autoplay = true; v.playsInline = true; v.preload = 'auto';
+    v.setAttribute('muted', ''); v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', ''); v.setAttribute('loop', '');
+    v.setAttribute('disablepictureinpicture', '');
+    [['looping-av1-h265.mp4', 'video/mp4; codecs="hvc1.1.6.L123.B0"'], ['looping-av1.mp4', 'video/mp4; codecs="av01.0.08M.08"']].forEach(([f, t]) => {
+      const so = document.createElement('source'); so.src = `https://static-prod.asahilife.com/videos/${f}?v=1.0.9`; so.type = t; v.appendChild(so);
+    });
+    host.appendChild(v);
+    const go = () => { const p = v.play(); if (p && p.catch) p.catch(() => {}); };
+    v.addEventListener('canplay', go);
+    go();
+    ['touchstart', 'click', 'scroll', 'keydown'].forEach((ev) => document.addEventListener(ev, go, { once: true, passive: true }));
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) go(); });
+  }
+  initBg();
   const CDN = 'https://static-prod.asahilife.com';
   const IMG = (n) => `${CDN}/images-webp/${n}?v=1.0.9`;
   function authHero() {
     return `<div class="auth-hero">
       <div class="auth-logo">${logoHtml(36)}</div>
+      <div class="auth-jp">新しい朝がはじまる</div>
             <div class="auth-title">Training Academy</div>
       <div class="auth-div"><i></i><img src="${SYMBOL_URL}" alt="" height="28" onerror="this.style.display='none'"><i></i></div>
       <div class="auth-sub">Điểm danh lớp học</div>
@@ -221,12 +242,12 @@
   function pageHero(route) {
     const h = PAGE_HERO[route] || PAGE_HERO.schedule;
     const first = (me.full_name || '').trim().split(/\s+/).slice(-1)[0] || 'bạn';
-    return `<section class="phero" style="background-image:url('${IMG(h[3])}');background-position:${h[4]}"><div class="phero-in">
+    return `<section class="phero"><div class="phero-in">
       <div class="phero-jp">${h[0]}</div>
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-11';
+  const APP_VERSION = '2026.11.28-12';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Life - Training Academy · Hệ thống điểm danh lớp học</p>

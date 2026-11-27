@@ -268,3 +268,24 @@ body:has(.auth) { background: var(--grad) fixed; }
 .auth { min-height: 0; display: block; }
 .auth .card { background: #fff; border: 0; border-radius: 8px; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: 0 10px 30px rgba(0,20,60,.25); }
 .auth-title { font-size: clamp(30px, 9vw, 40px); text-shadow: none; }
+
+/* ===== v12: video động nền cho TOÀN BỘ web ===== */
+#bgv { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: linear-gradient(180deg, #00183d 0%, #002f72 60%, #1c3a72 100%); }
+#bgv video { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%; pointer-events: none; }
+#bgv::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,24,61,.35) 0%, rgba(0,35,100,.15) 50%, rgba(0,24,61,.45) 100%); }
+@media (prefers-reduced-motion: reduce) { #bgv video { display: none; } }
+html, body { background: transparent; }
+body, body:has(.auth) { background: transparent !important; }
+#app { position: relative; z-index: 1; }
+.topbar { background: rgba(0,35,100,.72); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.tabs { background: rgba(255,255,255,.88); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.phero { background: transparent !important; }
+.phero::before, .phero::after { display: none !important; }
+.phero h1, .phero p, .phero-jp { text-shadow: 0 2px 14px rgba(0,10,40,.55); }
+.phero-in { min-height: 96px; }
+.card { background: rgba(255,255,255,.95); }
+.auth .card { background: rgba(255,255,255,.93); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,.4); border-radius: 14px; }
+.auth-jp { font-size: 15px; letter-spacing: clamp(2px, 1.6vw, 6px); color: rgba(255,255,255,.9); margin-bottom: 10px; display: block; }
+.auth-title, .auth-sub { text-shadow: 0 2px 16px rgba(0,10,40,.5); }
+.foot { background: rgba(0,35,100,.8); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.qr-screen { position: relative; z-index: 2; }
