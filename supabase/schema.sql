@@ -582,3 +582,16 @@ create policy attendance_delete on public.attendance
 -- ---------------------------------------------------------------------
 -- insert into public.allowed_staff (email, full_name, role, invite_code)
 -- values ('email-cua-ban@gmail.com', 'Pham Nhut Thanh', 'admin', 'DAT-MA-MOI-O-DAY');
+
+-- ---------------------------------------------------------------------
+-- Quyen truy cap bang cho vai tro dang nhap (RLS van gioi han tung dong).
+-- Supabase moi khong tu cap quyen cho bang tao bang SQL, nen phai cap ro rang.
+-- KHONG cap cho app_secret (khoa ky QR).
+-- ---------------------------------------------------------------------
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on
+  public.allowed_staff, public.students, public.profiles, public.class_types,
+  public.class_type_sessions, public.classes, public.class_students,
+  public.class_sessions, public.attendance
+  to authenticated;
+revoke all on public.app_secret from anon, authenticated;

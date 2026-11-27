@@ -163,13 +163,10 @@
       <div class="auth">
         <div class="brand big">Asahi Life <span>- Training Academy</span></div>
         <div class="card">
-          <div class="seg">
-            <button data-mode="login" class="${login ? 'on' : ''}">Đăng nhập</button>
-            <button data-mode="signup" class="${login ? '' : 'on'}">GV / Admin đăng ký</button>
-          </div>
+          ${login ? '' : '<h3 style="margin:0 0 6px">Đăng ký tài khoản giảng viên / admin</h3>'}
           <form id="f" autocomplete="on">
             ${login ? `
-              <label>Mã học viên <span class="muted small">(giảng viên/admin nhập email)</span></label>
+              <label>Mã học viên</label>
               <input id="id" required autocomplete="username" autocapitalize="characters">
               <label>Mật khẩu</label>
               <input id="pw" type="password" required autocomplete="current-password">` : `
@@ -181,12 +178,18 @@
             <div style="margin-top:14px"><button class="btn pink block" id="go">${login ? 'Đăng nhập' : 'Tạo tài khoản'}</button></div>
             <div class="form-msg" id="msg"></div>
           </form>
-          ${login ? '<p class="small" style="margin:12px 0 0"><a href="#" id="forgot">Quên mật khẩu?</a></p>' : ''}
+          ${login
+            ? '<p class="small" style="margin:12px 0 0"><a href="#" id="forgot">Quên mật khẩu?</a> &nbsp;·&nbsp; <a href="#" id="signup">Đăng ký tài khoản?</a></p>'
+            : '<p class="small" style="margin:12px 0 0"><a href="#" id="back">← Quay lại đăng nhập</a></p>'}
           ${login ? '<p class="muted small">Học viên đăng nhập lần đầu: mật khẩu chính là mã học viên của bạn, sau đó hệ thống yêu cầu đổi mật khẩu. </p>' : ''}
         </div>
       </div>`;
-    $$('.seg button').forEach((b) => { b.onclick = () => viewAuth(b.dataset.mode); });
-    if (login) $('#forgot').onclick = (e) => { e.preventDefault(); viewForgot(); };
+    if (login) {
+      $('#forgot').onclick = (e) => { e.preventDefault(); viewForgot(); };
+      $('#signup').onclick = (e) => { e.preventDefault(); viewAuth('signup'); };
+    } else {
+      $('#back').onclick = (e) => { e.preventDefault(); viewAuth('login'); };
+    }
     $('#f').onsubmit = async (e) => {
       e.preventDefault();
       const msg = $('#msg'); msg.className = 'form-msg'; msg.textContent = '';
