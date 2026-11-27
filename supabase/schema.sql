@@ -214,7 +214,7 @@ begin
 end $$;
 
 -- Moc gio muon (gio Viet Nam): mo QR truoc 12:00 = buoi sang (9:00),
--- truoc 17:00 = buoi chieu (13:30), con lai = buoi toi (18:00).
+-- truoc 17:00 = buoi chieu (13:30), con lai = buoi toi (19:00).
 -- Ngay hoc dau tien cua lop (ngay dau tien mo diem danh) duoc du them 5 phut.
 create or replace function public.late_deadline(p_session uuid)
 returns timestamptz language sql stable security definer set search_path = public as $$
@@ -230,7 +230,7 @@ returns timestamptz language sql stable security definer set search_path = publi
   select (((s.local_open)::date
           + case when s.local_open::time < time '12:00' then time '09:00'
                  when s.local_open::time < time '17:00' then time '13:30'
-                 else time '18:00' end
+                 else time '19:00' end
           + case when (s.local_open)::date = (select d from first_day) then interval '5 minutes'
                  else interval '0' end)
          ) at time zone 'Asia/Ho_Chi_Minh'
