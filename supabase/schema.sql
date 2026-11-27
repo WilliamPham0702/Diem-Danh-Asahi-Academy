@@ -19,18 +19,19 @@ insert into public.app_secret (id) values (1) on conflict do nothing;
 create table if not exists public.allowed_staff (
   email text primary key,
   full_name text,
-  role text not null check (role in ('admin', 'teacher'))
+  role text not null check (role in ('admin', 'teacher')),
+  -- ma moi: nguoi dang ky phai nhap dung ma nay (chong nguoi la chiem email giang vien)
+  invite_code text not null default encode(extensions.gen_random_bytes(5), 'hex')
 );
 
--- Danh sach hoc vien (nguon import tu Excel)
+-- Danh sach hoc vien (nguon import tu Excel). Khong luu email.
+-- Ma hoc vien luu dang CHU (text) de giu so 0 o dau, vd 000000089.
 create table if not exists public.students (
   code text primary key,
   full_name text not null,
   manager text,
-  title text,
-  email text not null
+  title text
 );
-create unique index if not exists students_email_uq on public.students (lower(email));
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
@@ -38,8 +39,11 @@ create table if not exists public.profiles (
   full_name text,
   role text not null check (role in ('admin', 'teacher', 'student')),
   student_code text references public.students (code) on delete set null,
-  device_id text
+  device_id text,
+  must_change_password boolean not null default false
 );
+create unique index if not exists profiles_student_code_uq
+  on public.profiles (student_code) where student_code is not null;
 
 create table if not exists public.class_types (
   id uuid primary key default gen_random_uuid(),
@@ -134,22 +138,27 @@ declare
   s public.students%rowtype;
   v_code text;
 begin
+  -- Giang vien / admin: email phai co trong danh sach va nhap dung ma moi
   select * into st from public.allowed_staff where lower(email) = lower(new.email);
   if found then
+    if coalesce(trim(new.raw_user_meta_data ->> 'invite_code'), '') <> st.invite_code then
+      raise exception 'INVITE_INVALID';
+    end if;
     insert into public.profiles (id, email, full_name, role)
     values (new.id, new.email, coalesce(st.full_name, new.email), st.role);
     return new;
   end if;
 
-  v_code := upper(trim(coalesce(new.raw_user_meta_data ->> 'student_code', '')));
-  select * into s from public.students
-   where lower(students.email) = lower(new.email) and upper(students.code) = v_code;
-  if not found then
-    raise exception 'EMAIL_OR_CODE_NOT_IN_LIST';
+  -- Hoc vien: tai khoan tu dong tao o lan dang nhap dau (ma hoc vien + mat khau mac dinh = ma).
+  -- Email dang nhap bat buoc co dang <ma>@ten-mien, ma phai co trong danh sach lop.
+  v_code := trim(coalesce(new.raw_user_meta_data ->> 'student_code', ''));
+  select * into s from public.students where students.code = v_code;
+  if not found or lower(split_part(new.email, '@', 1)) <> lower(v_code) then
+    raise exception 'STUDENT_NOT_IN_LIST';
   end if;
 
-  insert into public.profiles (id, email, full_name, role, student_code)
-  values (new.id, new.email, s.full_name, 'student', s.code);
+  insert into public.profiles (id, email, full_name, role, student_code, must_change_password)
+  values (new.id, new.email, s.full_name, 'student', s.code, true);
   return new;
 end $$;
 
@@ -220,6 +229,11 @@ begin
   select * into p from public.profiles where id = auth.uid();
   if not found or p.role <> 'student' or p.student_code is null then
     return jsonb_build_object('status', 'forbidden', 'message', 'Chỉ tài khoản học viên mới điểm danh được');
+  end if;
+
+  if p.must_change_password then
+    return jsonb_build_object('status', 'must_change_password',
+      'message', 'Bạn cần đổi mật khẩu trước khi điểm danh');
   end if;
 
   parts := string_to_array(coalesce(p_token, ''), '.');
@@ -346,6 +360,23 @@ begin
   update public.profiles set device_id = null where student_code = p_student_code;
 end $$;
 
+-- Hoc vien doi mat khau xong -> bo co "phai doi mat khau"
+create or replace function public.password_changed()
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  update public.profiles set must_change_password = false where id = auth.uid();
+end $$;
+
+-- Dat lai mat khau hoc vien: xoa tai khoan dang nhap. Lan dang nhap sau (ma + ma) tai khoan
+-- duoc tao lai voi mat khau mac dinh = ma hoc vien va bat buoc doi mat khau. Lich su diem danh giu nguyen.
+create or replace function public.reset_student_account(p_student_code text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_staff() then raise exception 'FORBIDDEN'; end if;
+  delete from auth.users
+   where id in (select id from public.profiles where student_code = p_student_code and role = 'student');
+end $$;
+
 -- Admin xoa tai khoan (hoc vien hoac giang vien)
 create or replace function public.admin_delete_user(p_user uuid)
 returns void language plpgsql security definer set search_path = public as $$
@@ -361,6 +392,10 @@ revoke all on function public.check_in(text, text) from public, anon;
 revoke all on function public.create_class(text, uuid, date, int, text[]) from public, anon;
 revoke all on function public.reset_device(text) from public, anon;
 revoke all on function public.admin_delete_user(uuid) from public, anon;
+revoke all on function public.password_changed() from public, anon;
+revoke all on function public.reset_student_account(text) from public, anon;
+grant execute on function public.password_changed() to authenticated;
+grant execute on function public.reset_student_account(text) to authenticated;
 grant execute on function public.get_qr_token(uuid) to authenticated;
 grant execute on function public.check_in(text, text) to authenticated;
 grant execute on function public.create_class(text, uuid, date, int, text[]) to authenticated;
@@ -486,5 +521,5 @@ create policy attendance_delete on public.attendance
 -- ---------------------------------------------------------------------
 -- 7. Tao admin dau tien (sua email roi chay), sau do vao web Dang ky
 -- ---------------------------------------------------------------------
--- insert into public.allowed_staff (email, full_name, role)
--- values ('email-cua-ban@gmail.com', 'Pham Nhut Thanh', 'admin');
+-- insert into public.allowed_staff (email, full_name, role, invite_code)
+-- values ('email-cua-ban@gmail.com', 'Pham Nhut Thanh', 'admin', 'DAT-MA-MOI-O-DAY');
