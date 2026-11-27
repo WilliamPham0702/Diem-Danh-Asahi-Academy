@@ -296,3 +296,12 @@ body, body:has(.auth) { background: transparent !important; }
 .phero::after { display: none !important; }
 .phero-in { min-height: 120px; }
 @media (min-width: 700px) { .phero-in { min-height: 170px; } }
+
+/* ===== v14: banner thấy rõ ảnh; đăng nhập/đăng ký/quên MK căn giữa ===== */
+.phero::before { background: linear-gradient(90deg, rgba(0,24,61,.62) 0%, rgba(0,35,100,.25) 50%, rgba(0,24,61,0) 100%) !important; }
+.phero { background-size: cover !important; }
+.phero-in { min-height: 130px; }
+@media (min-width: 700px) { .phero-in { min-height: 190px; } }
+.auth { min-height: 100vh; min-height: 100dvh; display: grid !important; align-content: center; justify-items: stretch; width: 100%; max-width: 420px; margin: 0 auto; padding: 24px 16px; box-sizing: border-box; }
+.auth-hero { text-align: center; margin-bottom: 20px; }
+.auth-logo, .auth-div { justify-content: center; }
