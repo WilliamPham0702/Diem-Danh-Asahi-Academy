@@ -682,8 +682,8 @@ do $$
 declare tid uuid;
 begin
   if exists (select 1 from public.class_types where name = 'LPFC-Parttime') then return; end if;
-  insert into public.class_types (name, description)
-  values ('LPFC-Parttime', 'Lộ trình đào tạo LP Parttime, 7 ngày học (nghỉ Thứ Bảy và Chủ Nhật). Sáng 9:00-12:00, chiều 13:30-16:30, học online qua MS Teams. M1: học từ ngày 1 (chưa có chứng chỉ). M2: học từ ngày 5, buổi Compliance (đã có chứng chỉ)')
+  insert into public.class_types (name, description, max_absent)
+  values ('LPFC-Parttime', 'Lộ trình đào tạo LP Parttime, 7 ngày học (nghỉ Thứ Bảy và Chủ Nhật). Sáng 9:00-12:00, chiều 13:30-16:30, học online qua MS Teams. M1: học từ ngày 1 (chưa có chứng chỉ). M2: học từ ngày 5, buổi Compliance (đã có chứng chỉ)', 2)
   returning id into tid;
   insert into public.class_type_sessions (class_type_id, session_no, day_no, shift, content, counts_absent)
   select tid, v.n, v.d, v.sh, v.c, v.ca from (values
