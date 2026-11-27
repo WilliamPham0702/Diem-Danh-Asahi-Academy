@@ -177,3 +177,7 @@ body:has(.auth) { background: var(--grad) fixed; }
 .stat { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
 .stat .chip { background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 8px 14px; }
 .stat .chip b { display: block; font-size: 20px; color: var(--navy); }
+
+/* o ngay tren man hinh nho khong tran khung */
+.grid2 > div { min-width: 0; }
+input[type="date"] { min-width: 0; width: 100%; max-width: 100%; box-sizing: border-box; }

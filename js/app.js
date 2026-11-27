@@ -550,7 +550,7 @@
     const today = new Date().toISOString().slice(0, 10);
     modal(`<h2>Tạo lớp</h2>
       <form id="cf">
-        <label>Tên lớp</label><input id="cn" required placeholder="VD: LPFC-HCM-20261201">
+        <label>Tên lớp</label><input id="cn" required placeholder="VD: LPFC-HCM-20261201" style="text-transform:uppercase" autocapitalize="characters">
         <div class="grid2">
           <div><label>Loại lớp</label><select id="ct">${types.map((t) =>
             `<option value="${t.id}">${esc(t.name)} (${t.class_type_sessions?.[0]?.count ?? 0} buổi)</option>`).join('')}</select></div>
@@ -573,7 +573,7 @@
           if (f) { const r = await importStudents(f); codes = codes.concat(r.codes); if (r.skipped) toast(`Bỏ qua ${r.skipped} dòng thiếu thông tin`); }
           codes = Array.from(new Set(codes));
           const id = await q(db.rpc('create_class', {
-            p_name: $('#cn', m).value, p_type: $('#ct', m).value, p_start: $('#cd', m).value,
+            p_name: $('#cn', m).value.trim().toUpperCase(), p_type: $('#ct', m).value, p_start: $('#cd', m).value,
             p_codes: codes,
           }));
           const miss = codes.length ? await missingCodes(codes) : [];
