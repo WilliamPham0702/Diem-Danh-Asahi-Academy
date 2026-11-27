@@ -170,9 +170,10 @@
       <div class="auth-sub">Điểm danh lớp học</div>
     </div>`;
   }
+  const APP_VERSION = '2026.11.28-4';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
-      <p>Asahi Life - Training Academy · Hệ thống điểm danh lớp học</p></div></footer>`;
+      <p>Asahi Life - Training Academy · Hệ thống điểm danh lớp học · v${APP_VERSION}</p></div></footer>`;
   }
 
   // ---------------------------------------------------------------- đăng nhập / đăng ký
