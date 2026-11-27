@@ -14,7 +14,7 @@ Chạy miễn phí: giao diện trên **GitHub Pages**, dữ liệu và đăng n
 - Giảng viên: tạo lớp, nhập danh sách học viên từ Excel, mở QR từng buổi, điểm danh tay, xuất báo cáo
 - Học viên: đăng nhập, đổi mật khẩu, quét QR, xem lịch sử
 - QR đổi mỗi 10 giây và chỉ hợp lệ đúng 10 giây, ký bằng khóa bí mật trên server. Chụp màn hình gửi người khác sẽ bị báo không hợp lệ
-- Mỗi học viên điểm danh 1 lần/buổi; mỗi tài khoản gắn 1 thiết bị
+- Mỗi học viên điểm danh 1 lần/buổi; mỗi tài khoản gắn 1 thiết bị; mỗi thiết bị chỉ điểm danh 1 tài khoản/buổi
 - Báo cáo Excel: chi tiết từng buổi (đúng giờ, muộn, vắng) và tổng hợp từng học viên
 
 Dữ liệu học viên chỉ gồm: mã, họ tên, chức danh. **Không lưu email, không lưu cấp quản lý.**
@@ -56,6 +56,7 @@ Repo > **Settings > Pages** > Source: nhánh `main`, thư mục `/ (root)`. Sau 
 
 - Mã QR có chữ ký và hạn dùng đúng 10 giây. Kiểm tra hoàn toàn trên server. Hằng số `v_ttl` trong hàm `check_in` (schema.sql) là chỗ chỉnh nếu sau này muốn nới.
 - Mỗi tài khoản chỉ gắn với 1 thiết bị (lưu khi điểm danh lần đầu). Đổi điện thoại thì giảng viên bấm **Đặt lại thiết bị**.
+- Mỗi thiết bị chỉ điểm danh được 1 tài khoản trong 1 buổi (chặn 1 máy quét hộ nhiều người). Thiết bị nhận diện bằng mã lưu trong trình duyệt, nên xóa dữ liệu trình duyệt, dùng tab ẩn danh hoặc trình duyệt khác vẫn lách được. Đây là rào cản nhẹ, không phải khóa cứng.
 - Giới hạn: người đang ngồi trong lớp quay video màn hình gửi cho bạn bè ở ngoài vẫn quét kịp trong 10 giây. Giảng viên nên nhìn quanh lớp.
 
 ## Lưu ý bảo mật và dữ liệu

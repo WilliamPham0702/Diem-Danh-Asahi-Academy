@@ -359,7 +359,7 @@
     addCleanup(stop);
 
     function showResult(r) {
-      const cls = { ok: 'ok', already: 'info', closed: 'warn', device_mismatch: 'warn' }[r.status] || 'bad';
+      const cls = { ok: 'ok', already: 'info', closed: 'warn', device_mismatch: 'warn', device_used: 'warn' }[r.status] || 'bad';
       const title = { ok: r.late ? 'Đã điểm danh (đến muộn)' : 'Điểm danh thành công', already: 'Đã điểm danh' }[r.status] || 'Chưa điểm danh được';
       let extra = '';
       if (r.status === 'ok') {

@@ -95,6 +95,9 @@ create table if not exists public.attendance (
   source text not null default 'qr' check (source in ('qr', 'manual')),
   unique (session_id, student_code)
 );
+-- 1 thiet bi chi diem danh 1 lan / 1 buoi (diem danh thu cong khong co device_id)
+create unique index if not exists attendance_session_device_uq
+  on public.attendance (session_id, device_id) where device_id is not null;
 
 -- ---------------------------------------------------------------------
 -- 2. Ham tro giup phan quyen
@@ -286,19 +289,33 @@ begin
   if p_device is null or length(p_device) < 8 then
     return jsonb_build_object('status', 'invalid', 'message', 'Không nhận diện được thiết bị');
   end if;
-  if p.device_id is null then
-    update public.profiles set device_id = p_device where id = p.id;
-  elsif p.device_id <> p_device then
+  if p.device_id is not null and p.device_id <> p_device then
     return jsonb_build_object('status', 'device_mismatch',
       'message', 'Tài khoản này đã gắn với thiết bị khác. Hãy báo giảng viên để đặt lại thiết bị');
   end if;
 
+  -- 1 thiet bi chi diem danh 1 lan / 1 buoi (chan 1 may quet ho nhieu tai khoan)
+  if exists (select 1 from public.attendance
+             where session_id = v_session and device_id = p_device) then
+    return jsonb_build_object('status', 'device_used',
+      'message', 'Thiết bị này đã dùng để điểm danh cho một tài khoản khác trong buổi học này');
+  end if;
+
+  if p.device_id is null then
+    update public.profiles set device_id = p_device where id = p.id;
+  end if;
+
   select * into st from public.students where code = p.student_code;
 
-  insert into public.attendance (session_id, student_code, student_name, device_id, source)
-  values (v_session, p.student_code, st.full_name, p_device, 'qr')
-  on conflict (session_id, student_code) do nothing
-  returning checked_at into v_checked;
+  begin
+    insert into public.attendance (session_id, student_code, student_name, device_id, source)
+    values (v_session, p.student_code, st.full_name, p_device, 'qr')
+    on conflict (session_id, student_code) do nothing
+    returning checked_at into v_checked;
+  exception when unique_violation then
+    return jsonb_build_object('status', 'device_used',
+      'message', 'Thiết bị này đã dùng để điểm danh cho một tài khoản khác trong buổi học này');
+  end;
 
   if v_checked is null then
     return jsonb_build_object('status', 'already',
