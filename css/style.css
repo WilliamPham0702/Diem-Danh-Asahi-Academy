@@ -230,3 +230,23 @@ main { min-height: calc(100vh - 380px); }
 .card { border-radius: 12px; box-shadow: 0 2px 10px rgba(0,35,100,.06); }
 .foot { position: relative; overflow: hidden; }
 .foot-jp { margin-top: 10px; font-size: 11px; letter-spacing: 4px; color: rgba(255,255,255,.55); }
+
+/* ===== v9: căn giữa video, hero từng trang, hiệu ứng ===== */
+.bgv-v { left: 50%; top: 50%; right: auto; bottom: auto; inset: auto; width: auto; height: auto; min-width: 100%; min-height: 100%;
+  transform: translate(-50%, -50%); object-fit: cover; object-position: 50% 50%; }
+.bgv-poster { background-position: 50% 50%; }
+.auth { display: flex; flex-direction: column; justify-content: center; min-height: 100vh; min-height: 100dvh; }
+.auth-hero, .auth .card { width: 100%; }
+.phero { background-size: cover; background-repeat: no-repeat; background-color: #00235f; }
+.phero::before { background: linear-gradient(90deg, rgba(0,24,61,.9) 0%, rgba(0,47,114,.6) 55%, rgba(0,47,114,.3) 100%); }
+.phero::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 28px; background: linear-gradient(180deg, transparent, var(--bg)); }
+.phero-in { min-height: 112px; display: flex; flex-direction: column; justify-content: center; }
+.phero h1 { font-weight: 600; font-size: 28px; letter-spacing: .2px; }
+.phero-jp { font-size: 13px; letter-spacing: 8px; }
+@media (min-width: 700px) { .phero-in { min-height: 170px; } .phero h1 { font-size: 38px; } }
+@keyframes fadeup { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+main > .card, main > div > .card { animation: fadeup .45s ease both; }
+.tabs { box-shadow: 0 2px 10px rgba(0,35,100,.06); }
+.tabs a.on { border-bottom-color: var(--navy); }
+.btn { border-radius: 8px; transition: background .15s, transform .1s; }
+.btn:active { transform: scale(.98); }

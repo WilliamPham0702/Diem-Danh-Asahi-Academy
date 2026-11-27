@@ -206,15 +206,28 @@
         <source src="${CDN}/videos/looping-av1.mp4?v=1.0.9" type='video/mp4; codecs="av01.0.08M.08"'>
       </video><div class="bgv-shade"></div></div>`;
   }
-  function pageHero() {
-    const hour = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' })).getHours();
-    const hi = hour < 11 ? 'Chào buổi sáng' : hour < 14 ? 'Chào buổi trưa' : hour < 18 ? 'Chào buổi chiều' : 'Chào buổi tối';
-    return `<section class="phero" style="background-image:url('${IMG('hero-poster.webp')}')"><div class="phero-in">
-      <div class="phero-jp">新しい朝</div>
-      <h1>${hi}, ${esc((me.full_name || '').split(' ').slice(-1)[0] || 'bạn')}</h1>
-      <p>${me.role === 'student' ? 'Quét mã QR để điểm danh buổi học hôm nay.' : 'Asahi Life Training Academy · Kế thừa di sản hơn 138 năm từ Nhật Bản.'}</p></div></section>`;
+  // Mỗi trang một ảnh nền + tiêu đề tiếng Nhật riêng (ảnh lấy từ asahilife.com)
+  const PAGE_HERO = {
+    schedule: ['予定', 'Lịch dạy', 'Các buổi dạy được phân công cho bạn', 'hero-poster.webp', 'center 40%'],
+    classes: ['教室', 'Lớp học', 'Quản lý lớp, buổi học và điểm danh', 'room-poster.webp', 'center 55%'],
+    roster: ['学生', 'Học viên', 'Danh sách học viên và các lớp đã tham gia', 'Tea-House-Image.webp', 'center bottom'],
+    reports: ['報告', 'Báo cáo', 'Xuất báo cáo điểm danh theo lớp', 'overplay-bg.webp', 'right center'],
+    staff: ['職員', 'Nhân sự', 'Giảng viên và quản trị viên', '390d3d809a7cb45ac603107d5c810a7294519656.webp', 'center'],
+    scan: ['出席', 'Điểm danh', 'Quét mã QR của giảng viên để điểm danh', 'hero-poster.webp', 'center 40%'],
+    history: ['履歴', 'Lịch sử điểm danh', 'Các buổi bạn đã tham gia', '89a85df788bb142a6104330626a97798db15c1d0.webp', 'center'],
+    account: ['設定', 'Tài khoản', 'Thông tin và mật khẩu', 'card-bg.webp', 'center'],
+    class: ['教室', 'Chi tiết lớp', 'Các buổi học và học viên', 'room-poster.webp', 'center 55%'],
+    session: ['出席', 'Chi tiết buổi học', 'Danh sách điểm danh của buổi học', 'c9e9b35046980a9f83bf5618ab3f357477d20263.webp', 'center'],
+  };
+  function pageHero(route) {
+    const h = PAGE_HERO[route] || PAGE_HERO.schedule;
+    const first = (me.full_name || '').trim().split(/\s+/).slice(-1)[0] || 'bạn';
+    return `<section class="phero" style="background-image:url('${IMG(h[3])}');background-position:${h[4]}"><div class="phero-in">
+      <div class="phero-jp">${h[0]}</div>
+      <h1>${h[1]}</h1>
+      <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-8';
+  const APP_VERSION = '2026.11.28-9';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Life - Training Academy · Hệ thống điểm danh lớp học</p>
@@ -396,7 +409,7 @@
       </div>
       <div class="tabs">${TABS[me.role].map(([k, l]) =>
         `<a href="#/${k}" class="${k === tabKey ? 'on' : ''}">${l}</a>`).join('')}</div>
-      ${pageHero()}
+      ${pageHero(route)}
       <main id="main"></main>
       ${footerHtml()}`;
     $('#logout').onclick = () => db.auth.signOut();
