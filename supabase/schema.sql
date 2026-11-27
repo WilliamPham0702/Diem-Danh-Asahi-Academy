@@ -57,6 +57,12 @@ create table if not exists public.class_type_sessions (
   content text not null,
   unique (class_type_id, session_no)
 );
+-- Loai lop co the quy dinh ngay hoc (khong tinh T7, CN), ca (sang/chieu) va nguong canh bao vang
+alter table public.class_types add column if not exists max_absent int;
+alter table public.class_type_sessions add column if not exists day_no int;
+alter table public.class_type_sessions add column if not exists shift text;
+alter table public.class_type_sessions drop constraint if exists cts_shift_chk;
+alter table public.class_type_sessions add constraint cts_shift_chk check (shift in ('sang', 'chieu'));
 
 create table if not exists public.classes (
   id uuid primary key default gen_random_uuid(),
@@ -83,6 +89,9 @@ create table if not exists public.class_sessions (
   closed boolean not null default false,
   unique (class_id, session_no)
 );
+alter table public.class_sessions add column if not exists shift text;
+alter table public.class_sessions drop constraint if exists cs_shift_chk;
+alter table public.class_sessions add constraint cs_shift_chk check (shift in ('sang', 'chieu'));
 
 create table if not exists public.attendance (
   id uuid primary key default gen_random_uuid(),
@@ -215,11 +224,12 @@ end $$;
 
 -- Moc gio muon (gio Viet Nam): mo QR truoc 12:00 = buoi sang (9:00),
 -- truoc 17:00 = buoi chieu (13:30), con lai = buoi toi (19:00).
+-- Neu buoi hoc co khai bao ca (sang/chieu) thi theo ca, khong theo gio mo QR.
 -- Ngay hoc dau tien cua lop (ngay dau tien mo diem danh) duoc du them 5 phut.
 create or replace function public.late_deadline(p_session uuid)
 returns timestamptz language sql stable security definer set search_path = public as $$
   with s as (
-    select cs.class_id,
+    select cs.class_id, cs.shift,
            (cs.opened_at at time zone 'Asia/Ho_Chi_Minh') as local_open
       from public.class_sessions cs where cs.id = p_session and cs.opened_at is not null
   ), first_day as (
@@ -228,7 +238,9 @@ returns timestamptz language sql stable security definer set search_path = publi
      where x.opened_at is not null
   )
   select (((s.local_open)::date
-          + case when s.local_open::time < time '12:00' then time '09:00'
+          + case when s.shift = 'sang' then time '09:00'
+                 when s.shift = 'chieu' then time '13:30'
+                 when s.local_open::time < time '12:00' then time '09:00'
                  when s.local_open::time < time '17:00' then time '13:30'
                  else time '19:00' end
           + case when (s.local_open)::date = (select d from first_day) then interval '5 minutes'
@@ -370,6 +382,20 @@ end $$;
 -- 5. Cac ham quan tri
 -- ---------------------------------------------------------------------
 
+-- Cong n ngay lam viec (bo qua Thu Bay, Chu Nhat) vao ngay bat dau
+create or replace function public.add_workdays(p_start date, p_n int)
+returns date language plpgsql immutable as $$
+declare
+  d date := p_start;
+  k int := 0;
+begin
+  while k < p_n loop
+    d := d + 1;
+    if extract(isodow from d) < 6 then k := k + 1; end if;
+  end loop;
+  return d;
+end $$;
+
 -- Tao lop: tu dong tao cac buoi hoc theo loai lop
 create or replace function public.create_class(
   p_name text, p_type uuid, p_start date, p_codes text[]
@@ -384,8 +410,11 @@ begin
   values (trim(p_name), p_type, p_start, auth.uid())
   returning id into cid;
 
-  insert into public.class_sessions (class_id, session_no, content, session_date)
-  select cid, t.session_no, t.content, p_start + (t.session_no - 1)
+  insert into public.class_sessions (class_id, session_no, content, session_date, shift)
+  select cid, t.session_no, t.content,
+         case when t.day_no is null then p_start + (t.session_no - 1)
+              else public.add_workdays(p_start, t.day_no - 1) end,
+         t.shift
     from public.class_type_sessions t
    where t.class_type_id = p_type;
 
@@ -595,3 +624,41 @@ grant select, insert, update, delete on
   public.class_sessions, public.attendance
   to authenticated;
 revoke all on public.app_secret from anon, authenticated;
+
+-- ---------------------------------------------------------------------
+-- Loai lop mau: LPFC-FullTime (2 tuan, 10 ngay hoc, moi ngay 2 buoi sang/chieu, nghi T7 CN)
+-- Canh bao khi hoc vien vang qua 2 buoi. Chi tao neu chua co.
+-- ---------------------------------------------------------------------
+do $$
+declare
+  tid uuid;
+begin
+  if exists (select 1 from public.class_types where name = 'LPFC-FullTime') then return; end if;
+  insert into public.class_types (name, description, max_absent)
+  values ('LPFC-FullTime', 'Lộ trình đào tạo LP Fulltime, 2 tuần (10 ngày học, nghỉ Thứ Bảy và Chủ Nhật). Sáng 9:00-12:00, chiều 13:30-17:00', 2)
+  returning id into tid;
+
+  insert into public.class_type_sessions (class_type_id, session_no, day_no, shift, content)
+  select tid, v.n, v.d, v.sh, v.c from (values
+    (1, 1, 'sang',  'Tổng quan Asahi Life. Tổng quan ngành bảo hiểm: nguồn gốc, khái niệm, vai trò đại lý bảo hiểm'),
+    (2, 1, 'chieu', 'Kiến thức chung ngành bảo hiểm: thuật ngữ, điều khoản, nguyên tắc cơ bản'),
+    (3, 2, 'sang',  'Pháp luật trong kinh doanh bảo hiểm'),
+    (4, 2, 'chieu', 'Nghiệp vụ bảo hiểm, quyền và nghĩa vụ của doanh nghiệp'),
+    (5, 3, 'sang',  'Ôn tập và giải đề theo các chủ đề đã học'),
+    (6, 3, 'chieu', 'Kiểm tra đánh giá điều kiện dự thi MOF'),
+    (7, 4, 'sang',  'Thi MOF'),
+    (8, 4, 'chieu', 'Thi MOF'),
+    (9, 5, 'sang',  'Compliance và Quy tắc ứng xử'),
+    (10, 5, 'chieu', 'Chính sách thu nhập LP và PM'),
+    (11, 6, 'sang',  'Tổng quan Tập đoàn Asahi và Asahi Life Việt Nam'),
+    (12, 6, 'chieu', 'Kokoro 101 và Omotenashi 101'),
+    (13, 7, 'sang',  'Kỹ năng bán hàng: Tìm kiếm khách hàng tiềm năng'),
+    (14, 7, 'chieu', 'Kỹ năng hoạch định tài chính, Ứng dụng AI. Kỹ năng bán hàng: Phân tích nhu cầu'),
+    (15, 8, 'sang',  'Kỹ năng bán hàng: Xử lý từ chối'),
+    (16, 8, 'chieu', 'Sản phẩm UL'),
+    (17, 9, 'sang',  'Kỹ năng bán hàng: Thiết kế giải pháp'),
+    (18, 9, 'chieu', 'Kỹ năng bán hàng: Trình bày và chốt hợp đồng'),
+    (19, 10, 'sang',  'Hướng dẫn ePOS và thực hành'),
+    (20, 10, 'chieu', 'Kiểm tra đánh giá. Ký hợp đồng và Tổng kết')
+  ) as v(n, d, sh, c);
+end $$;

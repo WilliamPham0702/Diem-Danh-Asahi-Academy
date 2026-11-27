@@ -588,7 +588,7 @@
 
   // ================================================================ GIẢNG VIÊN: chi tiết lớp
   async function viewClass(el, id) {
-    const cls = await q(db.from('classes').select('*, class_types(name)').eq('id', id).single());
+    const cls = await q(db.from('classes').select('*, class_types(name, max_absent)').eq('id', id).single());
     const sessions = await q(db.from('class_sessions').select('*').eq('class_id', id).order('session_no'));
     const roster = await q(db.from('class_students').select('student_code, students(*)').eq('class_id', id));
     const att = sessions.length ? await fetchAll(() => db.from('attendance')
@@ -603,6 +603,10 @@
       perStudent[a.student_code] = (perStudent[a.student_code] || 0) + 1;
     });
     const total = roster.length;
+    const attSet = new Set(att.map((a) => a.session_id + '|' + a.student_code));
+    const maxAbsent = cls.class_types?.max_absent;
+    const absent = {}; roster.forEach((r) => { absent[r.student_code] = absentCount(sessions, r.student_code, attSet); });
+    const warned = maxAbsent == null ? [] : roster.filter((r) => absent[r.student_code] > maxAbsent);
     roster.sort((a, b) => String(a.students?.full_name).localeCompare(String(b.students?.full_name), 'vi'));
 
     el.innerHTML = `
@@ -616,12 +620,16 @@
             <button class="btn danger" id="del">Xóa lớp</button></div>
         </div>
       </div>
+      ${warned.length ? `<div class="card" style="border-color:#f1c2c8;background:#fff6f7">
+        <h3 style="color:var(--bad)">⚠ Cảnh báo: ${warned.length} học viên vắng quá ${maxAbsent} buổi</h3>
+        <div class="small">${warned.map((r) => `<b>${esc(r.students?.full_name || r.student_code)}</b> (${esc(r.student_code)}): vắng ${absent[r.student_code]} buổi`).join('<br>')}</div></div>` : ''}
       <div class="card"><h3>Các buổi học</h3>
         <div class="tbl-wrap"><table>
-          <tr><th>Buổi</th><th>Nội dung</th><th>Ngày học</th><th>Trạng thái</th><th>Có mặt</th><th></th></tr>
+          <tr><th>Buổi</th><th>Nội dung</th><th>Ngày học</th><th>Ca</th><th>Trạng thái</th><th>Có mặt</th><th></th></tr>
           ${sessions.map((s) => `<tr>
             <td>${s.session_no}</td><td>${esc(s.content)}</td>
             <td><input type="date" value="${s.session_date || ''}" data-date="${s.id}" style="width:150px"></td>
+            <td>${s.shift ? SHIFT_LABEL[s.shift] : ''}</td>
             <td>${s.closed ? '<span class="badge gray">Đã đóng</span>' : s.opened_at ? '<span class="badge ok">Đã mở</span>' : '<span class="badge warn">Chưa mở</span>'}</td>
             <td>${perSession[s.id] || 0}/${total}</td>
             <td class="act">
@@ -632,11 +640,12 @@
         </table></div></div>
       <div class="card"><h3>Học viên (${total})</h3>
         <div class="tbl-wrap"><table>
-          <tr><th>Mã</th><th>Họ tên</th><th>Chức danh</th><th>Có mặt</th><th></th></tr>
+          <tr><th>Mã</th><th>Họ tên</th><th>Chức danh</th><th>Có mặt</th><th>Vắng</th><th></th></tr>
           ${roster.map((r) => { const s = r.students || {}; return `<tr>
             <td>${esc(r.student_code)}</td><td>${esc(s.full_name)}</td>
             <td>${esc(s.title)}</td>
             <td>${perStudent[r.student_code] || 0}/${sessions.length}</td>
+            <td>${absent[r.student_code] > 0 ? `<span class="badge ${maxAbsent != null && absent[r.student_code] > maxAbsent ? 'bad' : 'gray'}">${absent[r.student_code]}</span>` : '0'}</td>
             <td class="act">${hasDevice.has(r.student_code) ? `<button class="btn sm ghost" data-reset="${esc(r.student_code)}">Đặt lại thiết bị</button>` : ''}
               <button class="btn sm ghost" data-resetpw="${esc(r.student_code)}">Đặt lại MK</button>
               <button class="btn sm danger" data-rm="${esc(r.student_code)}">Xóa</button></td></tr>`; }).join('')}
@@ -704,6 +713,12 @@
         });
       };
     });
+  }
+
+  const SHIFT_LABEL = { sang: 'Sáng', chieu: 'Chiều' };
+  // Số buổi vắng = buổi đã mở điểm danh mà học viên không có bản ghi nào
+  function absentCount(sessions, code, attSet) {
+    return sessions.filter((s) => s.opened_at && !attSet.has(s.id + '|' + code)).length;
   }
 
   // ================================================================ GIẢNG VIÊN: chi tiết buổi học
@@ -900,7 +915,7 @@
   }
 
   async function exportReport(classIds, from, to) {
-    let cq = db.from('classes').select('id, name, start_date, class_types(name)').order('name');
+    let cq = db.from('classes').select('id, name, start_date, class_types(name, max_absent)').order('name');
     if (classIds) cq = cq.in('id', classIds);
     const classes = await q(cq);
     if (!classes.length) throw new Error('Không có lớp nào để xuất');
@@ -912,6 +927,7 @@
     const amap = {}; att.forEach((a) => { amap[a.session_id + '|' + a.student_code] = a; });
 
     const detail = []; const summary = {};
+    const limitByClass = {}; classes.forEach((c) => { limitByClass[c.name] = c.class_types?.max_absent; });
     for (const c of classes) {
       const sess = sessions.filter((s) => s.class_id === c.id)
         .filter((s) => (!from || (s.session_date && s.session_date >= from)) && (!to || (s.session_date && s.session_date <= to)))
@@ -922,6 +938,7 @@
         const key = c.id + '|' + st.code;
         summary[key] = { 'Lớp': c.name, 'Mã HV': st.code, 'Họ tên': st.full_name, 'Chức danh': st.title || '',
           'Đúng giờ': 0, 'Muộn': 0, 'Vắng': 0, 'Chưa mở': 0 };
+        const limit = c.class_types?.max_absent;
         for (const s of sess) {
           const a = amap[s.id + '|' + st.code];
           const status = lateInfo(s, c, a);
@@ -929,7 +946,7 @@
           if (summary[key][sKey] !== undefined) summary[key][sKey]++;
           detail.push({
             'Lớp': c.name, 'Loại lớp': c.class_types?.name || '', 'Buổi': s.session_no, 'Nội dung': s.content || '',
-            'Ngày học': fmtDate(s.session_date), 'Mã HV': st.code, 'Họ tên': st.full_name,
+            'Ngày học': fmtDate(s.session_date), 'Ca': s.shift ? SHIFT_LABEL[s.shift] : '', 'Mã HV': st.code, 'Họ tên': st.full_name,
             'Chức danh': st.title || '', 'Trạng thái': status,
             'Giờ điểm danh': a ? fmtTime(a.checked_at) : '', 'Hình thức': a ? (a.source === 'manual' ? 'Giảng viên điểm danh' : 'QR') : '',
           });
@@ -939,7 +956,9 @@
     if (!detail.length) throw new Error('Không có dữ liệu trong khoảng này');
     const sum = Object.values(summary).map((r) => {
       const opened = r['Đúng giờ'] + r['Muộn'] + r['Vắng'];
-      return { ...r, 'Tỷ lệ có mặt': opened ? Math.round(((r['Đúng giờ'] + r['Muộn']) / opened) * 100) + '%' : '' };
+      const lim = limitByClass[r['Lớp']];
+      return { ...r, 'Tỷ lệ có mặt': opened ? Math.round(((r['Đúng giờ'] + r['Muộn']) / opened) * 100) + '%' : '',
+        'Cảnh báo vắng': lim != null && r['Vắng'] > lim ? `Vắng quá ${lim} buổi` : '' };
     });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail), 'Chi tiết');
@@ -952,12 +971,13 @@
   // ================================================================ ADMIN: loại lớp
   async function viewTypes(el) {
     el.innerHTML = '<div class="card"><h2>Loại lớp</h2><p class="muted small">Mỗi loại lớp quy định số buổi và nội dung từng buổi. Khi giảng viên tạo lớp, các buổi được sinh ra theo mẫu này.</p><div id="t">Đang tải...</div></div><div class="card" id="newbox"></div>';
-    const types = await q(db.from('class_types').select('id, name, description, class_type_sessions(session_no, content)').order('name'));
+    const types = await q(db.from('class_types').select('id, name, description, max_absent, class_type_sessions(session_no, content, day_no, shift)').order('name'));
     $('#t').innerHTML = types.length ? types.map((t) => `<div style="border-top:1px solid var(--line);padding:10px 0">
       <div class="row between"><b>${esc(t.name)}</b> <span><span class="badge">${t.class_type_sessions.length} buổi</span>
         <button class="btn sm danger" data-del="${t.id}">Xóa</button></span></div>
+      ${t.max_absent != null ? `<div class="small" style="color:var(--bad)">Cảnh báo khi vắng quá ${t.max_absent} buổi</div>` : ''}
       <div class="muted small">${esc(t.description || '')}</div>
-      <ol class="small" style="margin:6px 0 0 18px">${t.class_type_sessions.sort((a, b) => a.session_no - b.session_no).map((s) => `<li>${esc(s.content)}</li>`).join('')}</ol></div>`).join('')
+      <ol class="small" style="margin:6px 0 0 18px">${t.class_type_sessions.sort((a, b) => a.session_no - b.session_no).map((s) => `<li>${s.day_no ? `<b>Ngày ${s.day_no}${s.shift ? ' · ' + SHIFT_LABEL[s.shift] : ''}:</b> ` : ''}${esc(s.content)}</li>`).join('')}</ol></div>`).join('')
       : '<p class="muted">Chưa có loại lớp nào.</p>';
     $$('[data-del]', el).forEach((b) => { b.onclick = () => {
       if (!confirm('Xóa loại lớp này? Các lớp đã tạo vẫn giữ nguyên.')) return;
@@ -965,6 +985,7 @@
     $('#newbox').innerHTML = `<h3>Tạo loại lớp mới</h3><form id="tf">
       <label>Tên loại lớp</label><input id="tn" required placeholder="VD: LPFC">
       <label>Mô tả</label><input id="td">
+      <label>Cảnh báo khi học viên vắng quá (số buổi, để trống nếu không cần)</label><input id="tm" type="number" min="0">
       <label>Nội dung các buổi (mỗi dòng là 1 buổi)</label>
       <textarea id="ts" required placeholder="Module 1 - Nền tảng&#10;Module 2 - Kỹ năng tư vấn"></textarea>
       <div style="margin-top:12px"><button class="btn pink">Lưu loại lớp</button></div></form>`;
@@ -973,7 +994,7 @@
       busy($('#tf button'), async () => {
         const lines = $('#ts').value.split('\n').map((s) => s.trim()).filter(Boolean);
         if (!lines.length) throw new Error('Cần ít nhất 1 buổi');
-        const t = await q(db.from('class_types').insert({ name: $('#tn').value.trim(), description: $('#td').value.trim() || null }).select().single());
+        const t = await q(db.from('class_types').insert({ name: $('#tn').value.trim(), description: $('#td').value.trim() || null, max_absent: $('#tm').value === '' ? null : Number($('#tm').value) }).select().single());
         await q(db.from('class_type_sessions').insert(lines.map((c, i) => ({ class_type_id: t.id, session_no: i + 1, content: c }))));
         toast('Đã lưu loại lớp', 'ok'); render();
       });
@@ -983,7 +1004,7 @@
   // ================================================================ ADMIN: nhân sự
   async function viewStaff(el) {
     el.innerHTML = `<div class="card"><h2>Admin & Giảng viên</h2>
-      <p class="muted small">Thêm email vào danh sách, rồi gửi <b>mã mời</b> (hiện ở bảng bên dưới) cho người đó. Họ mở tab "GV / Admin đăng ký", nhập email + mã mời để tạo tài khoản.</p>
+      <p class="muted small">Thêm email vào danh sách, rồi gửi <b>mã mời</b> (hiện ở bảng bên dưới) cho người đó. Họ bấm "Đăng ký tài khoản?" ở màn hình đăng nhập, nhập email + mã mời để tạo tài khoản.</p>
       <form id="sf" class="grid2"><div><label>Email</label><input id="se" type="email" required></div>
         <div><label>Họ tên</label><input id="sn" required></div>
         <div><label>Quyền</label><select id="sr"><option value="teacher">Giảng viên</option><option value="admin">Admin</option></select></div>
