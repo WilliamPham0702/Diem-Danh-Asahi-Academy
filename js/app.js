@@ -187,18 +187,38 @@
   function logoHtml(h) {
     return `<img class="logo" src="${LOGO_URL}" alt="Asahi Life" height="${h}" onerror="this.outerHTML='<span class=&quot;logo-fb&quot;>Asahi Life</span>'">`;
   }
+  const CDN = 'https://static-prod.asahilife.com';
+  const IMG = (n) => `${CDN}/images-webp/${n}?v=1.0.9`;
   function authHero() {
     return `<div class="auth-hero">
-      <div class="auth-logo">${logoHtml(34)}</div>
+      <div class="auth-logo">${logoHtml(36)}</div>
+      <div class="auth-jp">新しい朝がはじまる</div>
       <div class="auth-title">Training Academy</div>
       <div class="auth-div"><i></i><img src="${SYMBOL_URL}" alt="" height="28" onerror="this.style.display='none'"><i></i></div>
       <div class="auth-sub">Điểm danh lớp học</div>
     </div>`;
   }
-  const APP_VERSION = '2026.11.28-7';
+  // Nền video chuyển động (video trên asahilife.com), có ảnh poster dự phòng
+  function bgVideoHtml() {
+    return `<div class="bgv"><div class="bgv-poster" style="background-image:url('${IMG('hero-poster.webp')}')"></div>
+      <video class="bgv-v" muted autoplay loop playsinline preload="auto" poster="${IMG('hero-poster.webp')}">
+        <source src="${CDN}/videos/looping-av1-h265.mp4?v=1.0.9" type='video/mp4; codecs="hvc1.1.6.L123.B0"'>
+        <source src="${CDN}/videos/looping-av1.mp4?v=1.0.9" type='video/mp4; codecs="av01.0.08M.08"'>
+      </video><div class="bgv-shade"></div></div>`;
+  }
+  function pageHero() {
+    const hour = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' })).getHours();
+    const hi = hour < 11 ? 'Chào buổi sáng' : hour < 14 ? 'Chào buổi trưa' : hour < 18 ? 'Chào buổi chiều' : 'Chào buổi tối';
+    return `<section class="phero" style="background-image:url('${IMG('hero-poster.webp')}')"><div class="phero-in">
+      <div class="phero-jp">新しい朝</div>
+      <h1>${hi}, ${esc((me.full_name || '').split(' ').slice(-1)[0] || 'bạn')}</h1>
+      <p>${me.role === 'student' ? 'Quét mã QR để điểm danh buổi học hôm nay.' : 'Asahi Life Training Academy · Kế thừa di sản hơn 138 năm từ Nhật Bản.'}</p></div></section>`;
+  }
+  const APP_VERSION = '2026.11.28-8';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
-      <p>Asahi Life - Training Academy · Hệ thống điểm danh lớp học · v${APP_VERSION}</p></div></footer>`;
+      <p>Asahi Life - Training Academy · Hệ thống điểm danh lớp học</p>
+      <div class="foot-jp">SINCE 1888</div></div></footer>`;
   }
 
   // ---------------------------------------------------------------- đăng nhập / đăng ký
@@ -206,6 +226,7 @@
     runCleanups();
     const login = mode === 'login';
     app.innerHTML = `
+      ${bgVideoHtml()}
       <div class="auth">
         ${authHero()}
         <div class="card">
@@ -279,6 +300,7 @@
   function viewForgot() {
     runCleanups();
     app.innerHTML = `
+      ${bgVideoHtml()}
       <div class="auth">
         ${authHero()}
         <div class="card">
@@ -313,6 +335,7 @@
   function viewForceChange() {
     runCleanups();
     app.innerHTML = `
+      ${bgVideoHtml()}
       <div class="auth">
         ${authHero()}
         <div class="card">
@@ -373,6 +396,7 @@
       </div>
       <div class="tabs">${TABS[me.role].map(([k, l]) =>
         `<a href="#/${k}" class="${k === tabKey ? 'on' : ''}">${l}</a>`).join('')}</div>
+      ${pageHero()}
       <main id="main"></main>
       ${footerHtml()}`;
     $('#logout').onclick = () => db.auth.signOut();
@@ -470,6 +494,7 @@
     el.innerHTML = `
       <div class="card">
         <h2>Tài khoản</h2>
+        <div class="muted small" style="float:right">Phiên bản ${APP_VERSION}</div>
         <p>${esc(me.full_name || '')}${me.student_code ? `<br>Mã học viên: <b>${esc(me.student_code)}</b>` : `<br><span class="muted">${esc(me.email)}</span>`}</p>
       </div>
       <div class="card" style="max-width:440px">
