@@ -309,3 +309,5 @@ body, body:has(.auth) { background: transparent !important; }
 /* ===== v15: sửa lỗi banner bị nền trong suốt đè mất ảnh ===== */
 .phero { background-image: var(--hero) !important; background-position: var(--heropos, center) !important; background-size: cover !important; background-repeat: no-repeat !important; background-color: #00235f !important; }
 .phero::before { background: linear-gradient(90deg, rgba(0,24,61,.55) 0%, rgba(0,24,61,.15) 55%, rgba(0,24,61,0) 100%) !important; }
+
+.auth .card h2, .auth .card h3 { text-align: center; }
