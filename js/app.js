@@ -532,7 +532,6 @@
             `<option value="${t.id}">${esc(t.name)} (${t.class_type_sessions?.[0]?.count ?? 0} buổi)</option>`).join('')}</select></div>
           <div><label>Ngày học đầu tiên</label><input id="cd" type="date" value="${today}" required></div>
         </div>
-        <label>Cho phép đến trễ tối đa (phút)</label><input id="cl" type="number" min="0" value="15">
         <label>Danh sách học viên (file Excel)</label><input id="cx" type="file" accept=".xlsx,.xls,.csv">
         <div class="small muted">Cột: Mã học viên, Họ và tên, Chức danh. Cột Mã học viên nên để định dạng Text để giữ số 0 ở đầu. <a href="#" id="tpl">Tải file mẫu</a></div>
         <label>Hoặc nhập thêm mã học viên đã có trong hệ thống</label>
@@ -551,7 +550,7 @@
           codes = Array.from(new Set(codes));
           const id = await q(db.rpc('create_class', {
             p_name: $('#cn', m).value, p_type: $('#ct', m).value, p_start: $('#cd', m).value,
-            p_late: Number($('#cl', m).value || 15), p_codes: codes,
+            p_codes: codes,
           }));
           const miss = codes.length ? await missingCodes(codes) : [];
           close();
@@ -587,7 +586,7 @@
       <div class="card">
         <div class="row between">
           <div><h2>${esc(cls.name)}</h2>
-            <span class="muted">${esc(cls.class_types?.name || '')} · bắt đầu ${esc(fmtDate(cls.start_date))} · cho phép trễ ${cls.late_minutes} phút</span></div>
+            <span class="muted">${esc(cls.class_types?.name || '')} · bắt đầu ${esc(fmtDate(cls.start_date))}</span></div>
           <div class="row"><button class="btn ghost" id="exp">Xuất Excel</button>
             <button class="btn ghost" id="add">+ Thêm học viên</button>
             <button class="btn danger" id="del">Xóa lớp</button></div>
@@ -687,12 +686,11 @@
   function lateInfo(sess, cls, a) {
     if (!a) return sess.opened_at ? 'Vắng' : 'Chưa mở';
     if (a.source === 'manual') return 'Có mặt (điểm danh tay)';
-    const limit = new Date(sess.opened_at).getTime() + cls.late_minutes * 60000;
-    return sess.opened_at && new Date(a.checked_at).getTime() > limit ? 'Muộn' : 'Đúng giờ';
+    return a.late ? 'Muộn' : 'Đúng giờ';
   }
 
   async function viewSession(el, id) {
-    const sess = await q(db.from('class_sessions').select('*, classes(id, name, late_minutes)').eq('id', id).single());
+    const sess = await q(db.from('class_sessions').select('*, classes(id, name)').eq('id', id).single());
     const cls = sess.classes;
     const roster = await q(db.from('class_students').select('student_code, students(*)').eq('class_id', cls.id));
     const att = await q(db.from('attendance').select('*').eq('session_id', id));
@@ -878,7 +876,7 @@
   }
 
   async function exportReport(classIds, from, to) {
-    let cq = db.from('classes').select('id, name, start_date, late_minutes, class_types(name)').order('name');
+    let cq = db.from('classes').select('id, name, start_date, class_types(name)').order('name');
     if (classIds) cq = cq.in('id', classIds);
     const classes = await q(cq);
     if (!classes.length) throw new Error('Không có lớp nào để xuất');

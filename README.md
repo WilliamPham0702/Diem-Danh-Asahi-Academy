@@ -15,6 +15,7 @@ Chạy miễn phí: giao diện trên **GitHub Pages**, dữ liệu và đăng n
 - Học viên: đăng nhập, đổi mật khẩu, quét QR, xem lịch sử
 - QR đổi mỗi 10 giây và chỉ hợp lệ đúng 10 giây, ký bằng khóa bí mật trên server. Chụp màn hình gửi người khác sẽ bị báo không hợp lệ
 - Mỗi học viên điểm danh 1 lần/buổi; mỗi tài khoản gắn 1 thiết bị; mỗi thiết bị chỉ điểm danh 1 tài khoản/buổi
+- Quy định muộn (giờ Việt Nam): buổi sáng sau 9:00, buổi chiều sau 13:30, buổi tối sau 18:00. Hệ thống xếp buổi theo giờ giảng viên mở QR (trước 12:00 = sáng, trước 17:00 = chiều, còn lại = tối). Ngày học đầu tiên của lớp được du thêm 5 phút. Chỉnh mốc giờ trong hàm `late_deadline` (schema.sql).
 - Báo cáo Excel: chi tiết từng buổi (đúng giờ, muộn, vắng) và tổng hợp từng học viên
 
 Dữ liệu học viên chỉ gồm: mã, họ tên, chức danh. **Không lưu email, không lưu cấp quản lý.**

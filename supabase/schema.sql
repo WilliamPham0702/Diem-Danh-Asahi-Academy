@@ -63,7 +63,6 @@ create table if not exists public.classes (
   name text not null,
   class_type_id uuid references public.class_types (id) on delete set null,
   start_date date not null,
-  late_minutes int not null default 15,
   created_by uuid references public.profiles (id) on delete set null,
   created_at timestamptz not null default now()
 );
@@ -92,6 +91,7 @@ create table if not exists public.attendance (
   student_name text,
   checked_at timestamptz not null default now(),
   device_id text,
+  late boolean not null default false,
   source text not null default 'qr' check (source in ('qr', 'manual')),
   unique (session_id, student_code)
 );
@@ -213,6 +213,32 @@ begin
   );
 end $$;
 
+-- Moc gio muon (gio Viet Nam): mo QR truoc 12:00 = buoi sang (9:00),
+-- truoc 17:00 = buoi chieu (13:30), con lai = buoi toi (18:00).
+-- Ngay hoc dau tien cua lop (ngay dau tien mo diem danh) duoc du them 5 phut.
+create or replace function public.late_deadline(p_session uuid)
+returns timestamptz language sql stable security definer set search_path = public as $$
+  with s as (
+    select cs.class_id,
+           (cs.opened_at at time zone 'Asia/Ho_Chi_Minh') as local_open
+      from public.class_sessions cs where cs.id = p_session and cs.opened_at is not null
+  ), first_day as (
+    select min((x.opened_at at time zone 'Asia/Ho_Chi_Minh')::date) as d
+      from public.class_sessions x join s on x.class_id = s.class_id
+     where x.opened_at is not null
+  )
+  select (((s.local_open)::date
+          + case when s.local_open::time < time '12:00' then time '09:00'
+                 when s.local_open::time < time '17:00' then time '13:30'
+                 else time '18:00' end
+          + case when (s.local_open)::date = (select d from first_day) then interval '5 minutes'
+                 else interval '0' end)
+         ) at time zone 'Asia/Ho_Chi_Minh'
+    from s;
+$$;
+revoke all on function public.late_deadline(uuid) from public, anon;
+grant execute on function public.late_deadline(uuid) to authenticated;
+
 -- Hoc vien quet QR -> goi ham nay
 create or replace function public.check_in(p_token text, p_device text)
 returns jsonb language plpgsql security definer set search_path = public, extensions as $$
@@ -254,7 +280,7 @@ begin
   end if;
 
   select s.id, s.class_id, s.session_no, s.content, s.closed, s.opened_at,
-         c.name as class_name, c.late_minutes
+         c.name as class_name
     into sess
     from public.class_sessions s
     join public.classes c on c.id = s.class_id
@@ -323,7 +349,9 @@ begin
   end if;
 
   v_late := sess.opened_at is not null
-        and v_checked > sess.opened_at + make_interval(mins => sess.late_minutes);
+        and v_checked > public.late_deadline(v_session);
+  update public.attendance set late = v_late
+   where session_id = v_session and student_code = p.student_code;
 
   return jsonb_build_object(
     'status', 'ok',
@@ -344,7 +372,7 @@ end $$;
 
 -- Tao lop: tu dong tao cac buoi hoc theo loai lop
 create or replace function public.create_class(
-  p_name text, p_type uuid, p_start date, p_late int, p_codes text[]
+  p_name text, p_type uuid, p_start date, p_codes text[]
 ) returns uuid language plpgsql security definer set search_path = public as $$
 declare
   cid uuid;
@@ -352,8 +380,8 @@ begin
   if not public.is_staff() then raise exception 'FORBIDDEN'; end if;
   if coalesce(trim(p_name), '') = '' then raise exception 'NAME_REQUIRED'; end if;
 
-  insert into public.classes (name, class_type_id, start_date, late_minutes, created_by)
-  values (trim(p_name), p_type, p_start, coalesce(p_late, 15), auth.uid())
+  insert into public.classes (name, class_type_id, start_date, created_by)
+  values (trim(p_name), p_type, p_start, auth.uid())
   returning id into cid;
 
   insert into public.class_sessions (class_id, session_no, content, session_date)
@@ -418,7 +446,7 @@ end $$;
 -- Chi cho nguoi da dang nhap goi cac ham cong khai
 revoke all on function public.get_qr_token(uuid) from public, anon;
 revoke all on function public.check_in(text, text) from public, anon;
-revoke all on function public.create_class(text, uuid, date, int, text[]) from public, anon;
+revoke all on function public.create_class(text, uuid, date, text[]) from public, anon;
 revoke all on function public.reset_device(text) from public, anon;
 revoke all on function public.admin_delete_user(uuid) from public, anon;
 revoke all on function public.password_changed() from public, anon;
@@ -429,7 +457,7 @@ revoke all on function public.reset_password_by_code(text) from public;
 grant execute on function public.reset_password_by_code(text) to anon, authenticated;
 grant execute on function public.get_qr_token(uuid) to authenticated;
 grant execute on function public.check_in(text, text) to authenticated;
-grant execute on function public.create_class(text, uuid, date, int, text[]) to authenticated;
+grant execute on function public.create_class(text, uuid, date, text[]) to authenticated;
 grant execute on function public.reset_device(text) to authenticated;
 grant execute on function public.admin_delete_user(uuid) to authenticated;
 
