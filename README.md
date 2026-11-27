@@ -20,7 +20,7 @@ Chạy miễn phí: giao diện trên **GitHub Pages**, dữ liệu và đăng n
 
 Dữ liệu học viên chỉ gồm: mã, họ tên, chức danh. **Không lưu email, không lưu cấp quản lý.**
 
-Logo: hiện dùng chữ "Asahi Life Academy". Muốn dùng logo thật, thay chữ trong `js/app.js` (class `brand`) bằng thẻ `<img>` trỏ tới file logo trong repo.
+Logo: hiện dùng chữ "Asahi Life - Training Academy". Muốn dùng logo thật, thay chữ trong `js/app.js` (class `brand`) bằng thẻ `<img>` trỏ tới file logo trong repo.
 
 ## Cài đặt (khoảng 15 phút)
 

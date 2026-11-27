@@ -161,7 +161,7 @@
     const login = mode === 'login';
     app.innerHTML = `
       <div class="auth">
-        <div class="brand big">Asahi Life <span>Academy</span><small> Điểm danh</small></div>
+        <div class="brand big">Asahi Life <span>- Training Academy</span></div>
         <div class="card">
           <div class="seg">
             <button data-mode="login" class="${login ? 'on' : ''}">Đăng nhập</button>
@@ -231,7 +231,7 @@
     runCleanups();
     app.innerHTML = `
       <div class="auth">
-        <div class="brand big">Asahi Life <span>Academy</span></div>
+        <div class="brand big">Asahi Life <span>- Training Academy</span></div>
         <div class="card">
           <h2>Quên mật khẩu</h2>
           <p class="muted small">Nhập mã học viên. Mật khẩu sẽ quay về chính mã học viên, sau đó bạn đăng nhập và đặt mật khẩu mới.</p>
@@ -265,7 +265,7 @@
     runCleanups();
     app.innerHTML = `
       <div class="auth">
-        <div class="brand big">Asahi Life <span>Academy</span></div>
+        <div class="brand big">Asahi Life <span>- Training Academy</span></div>
         <div class="card">
           <h2>Đặt mật khẩu mới</h2>
           <p class="muted small">Xin chào ${esc(me.full_name || '')}. Vì bảo mật, bạn cần đổi mật khẩu trước khi sử dụng (ít nhất 6 ký tự, khác mã học viên).</p>
@@ -317,7 +317,7 @@
     const tabKey = SUBROUTES[route] || route;
     app.innerHTML = `
       <div class="topbar">
-        <div class="brand">Asahi Life <span>Academy</span></div>
+        <div class="brand">Asahi Life <span>- Training Academy</span></div>
         <div class="who"><span class="name">${esc(me.full_name || me.email)}</span>
           <span class="badge">${ROLE_LABEL[me.role]}</span>
           <button class="btn ghost sm" id="logout">Thoát</button></div>
