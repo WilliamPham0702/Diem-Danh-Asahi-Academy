@@ -8,16 +8,16 @@ Chạy miễn phí: giao diện trên **GitHub Pages**, dữ liệu và đăng n
 
 - 3 loại tài khoản: **Admin**, **Giảng viên**, **Học viên**
 - **Học viên không cần email.** Đăng nhập bằng Mã học viên. Mật khẩu ban đầu = Mã học viên (giữ số 0 đầu, ví dụ `000000089`). Đăng nhập lần đầu bắt buộc đổi mật khẩu.
-- Giảng viên/admin bấm **Đặt lại MK**: mật khẩu về lại mã học viên, lần đăng nhập sau phải đổi mật khẩu.
+- Quên mật khẩu: học viên bấm **Quên mật khẩu?** ngay trên màn hình đăng nhập, nhập mã học viên để mật khẩu về lại mã. Giảng viên/admin cũng có nút **Đặt lại MK**.
 - Tài khoản học viên tự được kích hoạt ở lần đăng nhập đầu tiên, miễn là mã có trong danh sách lớp đã nhập. Không cần bước tạo tài khoản hàng loạt.
 - Admin: tạo loại lớp (số buổi, nội dung từng buổi), thêm giảng viên, xóa tài khoản, xuất báo cáo
 - Giảng viên: tạo lớp, nhập danh sách học viên từ Excel, mở QR từng buổi, điểm danh tay, xuất báo cáo
 - Học viên: đăng nhập, đổi mật khẩu, quét QR, xem lịch sử
-- QR đổi mỗi 10 giây, ký bằng khóa bí mật trên server. Chụp màn hình gửi người khác sẽ bị báo không hợp lệ
-- Mỗi học viên điểm danh 1 lần/buổi; khóa 1 thiết bị/tài khoản
+- QR đổi mỗi 10 giây và chỉ hợp lệ đúng 10 giây, ký bằng khóa bí mật trên server. Chụp màn hình gửi người khác sẽ bị báo không hợp lệ
+- Mỗi học viên điểm danh 1 lần/buổi; mỗi tài khoản gắn 1 thiết bị
 - Báo cáo Excel: chi tiết từng buổi (đúng giờ, muộn, vắng) và tổng hợp từng học viên
 
-Dữ liệu học viên chỉ gồm: mã, họ tên, cấp quản lý, chức danh. **Không lưu email.**
+Dữ liệu học viên chỉ gồm: mã, họ tên, chức danh. **Không lưu email, không lưu cấp quản lý.**
 
 Logo: hiện dùng chữ "Asahi Life Academy". Muốn dùng logo thật, thay chữ trong `js/app.js` (class `brand`) bằng thẻ `<img>` trỏ tới file logo trong repo.
 
@@ -49,21 +49,21 @@ Repo > **Settings > Pages** > Source: nhánh `main`, thư mục `/ (root)`. Sau 
 1. Mở web, tab **GV / Admin đăng ký**: nhập email admin, mã mời ở bước 1.3 và mật khẩu.
 2. Tab **Loại lớp**: tạo loại lớp (mỗi dòng là một buổi).
 3. Tab **Nhân sự**: thêm email giảng viên, gửi mã mời hiện ở bảng cho họ. Giảng viên tự đăng ký bằng email + mã mời.
-4. Giảng viên: **Lớp học > Tạo lớp**, nhập file Excel (cột: Mã học viên, Tên học viên, Tên cấp quản lý, Chức danh). Nên để cột Mã học viên ở định dạng Text.
+4. Giảng viên: **Lớp học > Tạo lớp**, nhập file Excel (cột: Mã học viên, Họ và tên, Chức danh; cột nào khác sẽ bị bỏ qua). Nên để cột Mã học viên ở định dạng Text.
 5. Báo học viên: vào web, nhập Mã học viên, mật khẩu là chính mã đó, rồi đặt mật khẩu mới.
 
 ## Cách chống gian lận
 
-- Mã QR có chữ ký và hạn dùng 10 giây (cho dư 5 giây vì mạng chậm). Kiểm tra hoàn toàn trên server.
+- Mã QR có chữ ký và hạn dùng đúng 10 giây. Kiểm tra hoàn toàn trên server. Hằng số `v_ttl` trong hàm `check_in` (schema.sql) là chỗ chỉnh nếu sau này muốn nới.
 - Mỗi tài khoản chỉ gắn với 1 thiết bị (lưu khi điểm danh lần đầu). Đổi điện thoại thì giảng viên bấm **Đặt lại thiết bị**.
 - Giới hạn: người đang ngồi trong lớp quay video màn hình gửi cho bạn bè ở ngoài vẫn quét kịp trong 10 giây. Giảng viên nên nhìn quanh lớp.
 
 ## Lưu ý bảo mật và dữ liệu
 
-- **Mật khẩu mặc định = mã học viên là điểm yếu.** Mã học viên có thể đoán được (số liên tiếp) và nằm trên danh sách. Ai biết mã của một học viên chưa đăng nhập lần đầu có thể đăng nhập thay họ và đặt mật khẩu mới. Hậu quả: người đó điểm danh được thay (vẫn phải có mặt tại lớp để quét QR) và học viên thật bị khóa. Cách giảm rủi ro: nhập danh sách lớp sát ngày học, báo học viên đăng nhập đổi mật khẩu ngay buổi đầu, và giảng viên bấm Đặt lại MK khi có sự cố.
+- **Mật khẩu mặc định = mã học viên, và ai cũng bấm "Quên mật khẩu" được.** Mã học viên đoán được (số liên tiếp). Ai biết mã của một học viên đều đăng nhập và điểm danh thay được (vẫn phải có mặt ở lớp để quét QR), hoặc đặt lại để khóa tài khoản người đó. Dự án chấp nhận rủi ro này vì chỉ dùng tạm vài tháng, chờ hệ thống chính thức của công ty. Vì đặt lại sẽ xóa thiết bị đã gắn, nên khóa 1 thiết bị/tài khoản chỉ còn tác dụng nhẹ.
 - Giảng viên/admin đăng ký bằng email + **mã mời** do admin cấp, nên người lạ biết email cũng không chiếm được tài khoản.
 - Nên bật xác thực 2 lớp cho tài khoản GitHub và Supabase của người quản trị.
-- **Dữ liệu cá nhân** (tên, cấp quản lý) lưu trên Supabase, ngoài hệ thống công ty. Cần được cấp quản lý/IT đồng ý trước khi dùng dữ liệu thật.
+- **Dữ liệu cá nhân** (mã, tên, chức danh) lưu trên Supabase, ngoài hệ thống công ty. Cần được cấp quản lý/IT đồng ý trước khi dùng dữ liệu thật.
 - Giảng viên xem được toàn bộ danh sách học viên trong hệ thống, nhưng chỉ quản lý được lớp do mình tạo. Admin quản lý tất cả.
 - Gói free của Supabase tạm dừng dự án sau 1 tuần không hoạt động. Vào dashboard bấm **Restore**, dữ liệu vẫn còn.
 - Hãy xuất báo cáo Excel định kỳ để lưu bản sao dữ liệu.

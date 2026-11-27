@@ -24,12 +24,11 @@ create table if not exists public.allowed_staff (
   invite_code text not null default encode(extensions.gen_random_bytes(5), 'hex')
 );
 
--- Danh sach hoc vien (nguon import tu Excel). Khong luu email.
+-- Danh sach hoc vien (nguon import tu Excel). Chi luu ma, ho ten, chuc danh. Khong luu email, khong luu cap quan ly.
 -- Ma hoc vien luu dang CHU (text) de giu so 0 o dau, vd 000000089.
 create table if not exists public.students (
   code text primary key,
   full_name text not null,
-  manager text,
   title text
 );
 
@@ -168,7 +167,7 @@ create trigger on_auth_user_created
   for each row execute function public.handle_new_user();
 
 -- ---------------------------------------------------------------------
--- 4. Ma QR xoay: ky bang HMAC, het han sau 10 giay (+5 giay du phong mang)
+-- 4. Ma QR xoay: ky bang HMAC, het han dung 10 giay (hang so v_ttl trong ham check_in)
 -- ---------------------------------------------------------------------
 
 create or replace function public.make_token(p_session uuid, p_ts bigint)
@@ -222,6 +221,7 @@ declare
   v_session uuid;
   v_ts bigint;
   v_now bigint;
+  v_ttl constant int := 10;  -- ma QR chi hop le toi da 10 giay ke tu luc tao
   v_late boolean;
   v_checked timestamptz;
   msg_invalid constant text := 'Bạn đang điểm danh trên mã QR không hợp lệ do người khác chụp lại';
@@ -269,7 +269,7 @@ begin
 
   -- Ma het han (hoc vien khac chup lai gui di)
   v_now := extract(epoch from now())::bigint;
-  if v_now - v_ts > 15 or v_ts - v_now > 5 then
+  if v_now - v_ts > v_ttl or v_ts > v_now then
     return jsonb_build_object('status', 'expired', 'message', msg_invalid);
   end if;
 
@@ -377,6 +377,18 @@ begin
    where id in (select id from public.profiles where student_code = p_student_code and role = 'student');
 end $$;
 
+-- Hoc vien tu dat lai mat khau tren man hinh dang nhap (khong can dang nhap):
+-- xoa tai khoan dang nhap, lan dang nhap sau (ma + ma) tao lai voi mat khau mac dinh va bat buoc doi.
+create or replace function public.reset_password_by_code(p_code text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not exists (select 1 from public.students where code = trim(p_code)) then
+    raise exception 'STUDENT_NOT_IN_LIST';
+  end if;
+  delete from auth.users
+   where id in (select id from public.profiles where student_code = trim(p_code) and role = 'student');
+end $$;
+
 -- Admin xoa tai khoan (hoc vien hoac giang vien)
 create or replace function public.admin_delete_user(p_user uuid)
 returns void language plpgsql security definer set search_path = public as $$
@@ -396,6 +408,8 @@ revoke all on function public.password_changed() from public, anon;
 revoke all on function public.reset_student_account(text) from public, anon;
 grant execute on function public.password_changed() to authenticated;
 grant execute on function public.reset_student_account(text) to authenticated;
+revoke all on function public.reset_password_by_code(text) from public;
+grant execute on function public.reset_password_by_code(text) to anon, authenticated;
 grant execute on function public.get_qr_token(uuid) to authenticated;
 grant execute on function public.check_in(text, text) to authenticated;
 grant execute on function public.create_class(text, uuid, date, int, text[]) to authenticated;

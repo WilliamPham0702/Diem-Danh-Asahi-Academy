@@ -181,10 +181,12 @@
             <div style="margin-top:14px"><button class="btn pink block" id="go">${login ? 'Đăng nhập' : 'Tạo tài khoản'}</button></div>
             <div class="form-msg" id="msg"></div>
           </form>
-          ${login ? '<p class="muted small">Học viên đăng nhập lần đầu: mật khẩu chính là mã học viên của bạn, sau đó hệ thống yêu cầu đổi mật khẩu. Quên mật khẩu: nhờ giảng viên đặt lại.</p>' : ''}
+          ${login ? '<p class="small" style="margin:12px 0 0"><a href="#" id="forgot">Quên mật khẩu?</a></p>' : ''}
+          ${login ? '<p class="muted small">Học viên đăng nhập lần đầu: mật khẩu chính là mã học viên của bạn, sau đó hệ thống yêu cầu đổi mật khẩu. </p>' : ''}
         </div>
       </div>`;
     $$('.seg button').forEach((b) => { b.onclick = () => viewAuth(b.dataset.mode); });
+    if (login) $('#forgot').onclick = (e) => { e.preventDefault(); viewForgot(); };
     $('#f').onsubmit = async (e) => {
       e.preventDefault();
       const msg = $('#msg'); msg.className = 'form-msg'; msg.textContent = '';
@@ -201,7 +203,7 @@
           if (error && !isEmail && /Invalid login/i.test(error.message) && normCode(password) === code) {
             const r = await db.auth.signUp({ email, password: code, options: { data: { student_code: code } } });
             if (r.error) {
-              if (/already registered/i.test(r.error.message)) throw new Error('Sai mã học viên hoặc mật khẩu. Quên mật khẩu thì nhờ giảng viên đặt lại.');
+              if (/already registered/i.test(r.error.message)) throw new Error('Sai mã học viên hoặc mật khẩu. Nếu quên mật khẩu, bấm "Quên mật khẩu?" bên dưới.');
               throw r.error;
             }
             if (!r.data.session) throw new Error('Chưa đăng nhập được: cần tắt "Confirm email" trong Supabase (xem README).');
@@ -218,6 +220,40 @@
           if (data.session) await enter();
           else throw new Error('Chưa đăng nhập được: cần tắt "Confirm email" trong Supabase (xem README).');
         }
+      } catch (err) {
+        msg.className = 'form-msg err'; msg.textContent = errMsg(err);
+      } finally { btn.disabled = false; }
+    };
+  }
+
+  // Học viên tự đặt lại mật khẩu về mã học viên (không cần đăng nhập)
+  function viewForgot() {
+    runCleanups();
+    app.innerHTML = `
+      <div class="auth">
+        <div class="brand big">Asahi Life <span>Academy</span></div>
+        <div class="card">
+          <h2>Quên mật khẩu</h2>
+          <p class="muted small">Nhập mã học viên. Mật khẩu sẽ quay về chính mã học viên, sau đó bạn đăng nhập và đặt mật khẩu mới.</p>
+          <form id="f">
+            <label>Mã học viên</label><input id="code" required autocomplete="off" autocapitalize="characters">
+            <div class="row" style="margin-top:14px"><button class="btn pink" id="go">Đặt lại mật khẩu</button>
+              <button type="button" class="btn ghost" id="back">Quay lại</button></div>
+            <div class="form-msg" id="msg"></div>
+          </form>
+        </div>
+      </div>`;
+    $('#back').onclick = () => viewAuth('login');
+    $('#f').onsubmit = async (e) => {
+      e.preventDefault();
+      const msg = $('#msg'); msg.className = 'form-msg'; msg.textContent = '';
+      const btn = $('#go'); btn.disabled = true;
+      try {
+        const code = normCode($('#code').value);
+        const { error } = await db.rpc('reset_password_by_code', { p_code: code });
+        if (error) throw error;
+        msg.className = 'form-msg okm';
+        msg.textContent = 'Đã đặt lại. Hãy đăng nhập bằng mã học viên, mật khẩu cũng là mã học viên.';
       } catch (err) {
         msg.className = 'form-msg err'; msg.textContent = errMsg(err);
       } finally { btn.disabled = false; }
@@ -411,12 +447,12 @@
     .replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
 
   function mapRow(row) {
-    const out = { code: '', full_name: '', manager: '', title: '' };
+    const out = { code: '', full_name: '', title: '' };
     for (const key of Object.keys(row)) {
       const k = norm(key); const v = String(row[key] ?? '').trim();
       if (!v) continue;
       if (k.includes('email') || k.includes('mail')) continue; // không lưu email
-      else if (k.includes('quanly') || k.includes('manager')) out.manager = v;
+      else if (k.includes('quanly') || k.includes('manager')) continue; // không lưu cấp quản lý (kể cả cột gộp "cấp quản lý và chức danh")
       else if (k.includes('chucdanh') || k.includes('chucvu') || k === 'title') out.title = v;
       else if (['mahocvien', 'mahv', 'mshv', 'ma', 'code', 'mahocvien'].includes(k) || k.includes('mahocvien')) out.code = normCode(v);
       else if (k.includes('tenhocvien') || k.includes('hoten') || k === 'ten' || k === 'name') out.full_name = v;
@@ -460,8 +496,8 @@
 
   function downloadTemplate() {
     const ws = XLSX.utils.aoa_to_sheet([
-      ['Mã học viên', 'Tên học viên', 'Tên cấp quản lý', 'Chức danh'],
-      ['000000089', 'Nguyễn Văn A', 'Trần Thị B', 'Agency Leader'],
+      ['Mã học viên', 'Họ và tên', 'Chức danh'],
+      ['000000089', 'Nguyễn Văn A', 'Agency Leader'],
     ]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Danh sách');
@@ -498,7 +534,7 @@
         </div>
         <label>Cho phép đến trễ tối đa (phút)</label><input id="cl" type="number" min="0" value="15">
         <label>Danh sách học viên (file Excel)</label><input id="cx" type="file" accept=".xlsx,.xls,.csv">
-        <div class="small muted">Cột: Mã học viên, Tên học viên, Tên cấp quản lý, Chức danh. Cột Mã học viên nên để định dạng Text để giữ số 0 ở đầu. <a href="#" id="tpl">Tải file mẫu</a></div>
+        <div class="small muted">Cột: Mã học viên, Họ và tên, Chức danh. Cột Mã học viên nên để định dạng Text để giữ số 0 ở đầu. <a href="#" id="tpl">Tải file mẫu</a></div>
         <label>Hoặc nhập thêm mã học viên đã có trong hệ thống</label>
         <textarea id="cc" placeholder="000000089, 000000090, ..."></textarea>
         <div class="row" style="margin-top:14px"><button class="btn pink" id="ok">Tạo lớp</button>
@@ -573,9 +609,9 @@
         </table></div></div>
       <div class="card"><h3>Học viên (${total})</h3>
         <div class="tbl-wrap"><table>
-          <tr><th>Mã</th><th>Họ tên</th><th>Cấp quản lý</th><th>Chức danh</th><th>Có mặt</th><th></th></tr>
+          <tr><th>Mã</th><th>Họ tên</th><th>Chức danh</th><th>Có mặt</th><th></th></tr>
           ${roster.map((r) => { const s = r.students || {}; return `<tr>
-            <td>${esc(r.student_code)}</td><td>${esc(s.full_name)}</td><td>${esc(s.manager)}</td>
+            <td>${esc(r.student_code)}</td><td>${esc(s.full_name)}</td>
             <td>${esc(s.title)}</td>
             <td>${perStudent[r.student_code] || 0}/${sessions.length}</td>
             <td class="act">${hasDevice.has(r.student_code) ? `<button class="btn sm ghost" data-reset="${esc(r.student_code)}">Đặt lại thiết bị</button>` : ''}
@@ -680,9 +716,9 @@
           <div class="chip"><b>${stat['Đúng giờ']}</b>Đúng giờ</div><div class="chip"><b>${stat['Muộn']}</b>Muộn</div>
           <div class="chip"><b>${stat['Vắng']}</b>Vắng</div><div class="chip"><b>${roster.length}</b>Tổng</div></div></div>
       <div class="card"><div class="tbl-wrap"><table>
-        <tr><th>Mã</th><th>Họ tên</th><th>Cấp quản lý</th><th>Trạng thái</th><th>Giờ điểm danh</th><th></th></tr>
+        <tr><th>Mã</th><th>Họ tên</th><th>Chức danh</th><th>Trạng thái</th><th>Giờ điểm danh</th><th></th></tr>
         ${rows.map(({ r, a, st }) => `<tr>
-          <td>${esc(r.student_code)}</td><td>${esc(r.students?.full_name)}</td><td>${esc(r.students?.manager)}</td>
+          <td>${esc(r.student_code)}</td><td>${esc(r.students?.full_name)}</td><td>${esc(r.students?.title)}</td>
           <td><span class="badge ${badge(st)}">${esc(st)}</span></td><td>${a ? esc(fmtTime(a.checked_at)) : ''}</td>
           <td class="act">${a ? `<button class="btn sm danger" data-undo="${a.id}">Hủy</button>`
             : `<button class="btn sm ghost" data-manual="${esc(r.student_code)}" data-name="${esc(r.students?.full_name)}">Điểm danh tay</button>`}</td></tr>`).join('')}
@@ -785,7 +821,7 @@
       <div class="row between"><h2>Học viên</h2>
         <div class="row"><button class="btn ghost" id="tpl">Tải file mẫu</button>
           <label class="btn pink" style="margin:0;cursor:pointer">Nhập từ Excel<input id="imp" type="file" accept=".xlsx,.xls,.csv" class="hide"></label></div></div>
-      <input id="search" placeholder="Tìm theo mã, tên, cấp quản lý..." style="margin:12px 0">
+      <input id="search" placeholder="Tìm theo mã, tên..." style="margin:12px 0">
       <div id="t" class="muted">Đang tải...</div></div>`;
     const students = await fetchAll(() => db.from('students').select('*').order('code'));
     const profs = await fetchAll(() => db.from('profiles').select('id, student_code, device_id, must_change_password').eq('role', 'student').order('id'));
@@ -793,12 +829,12 @@
 
     function draw() {
       const k = norm($('#search').value);
-      const list = students.filter((s) => !k || norm(s.code + s.full_name + (s.manager || '')).includes(k));
+      const list = students.filter((s) => !k || norm(s.code + s.full_name).includes(k));
       const shown = list.slice(0, 300);
       $('#t').innerHTML = `<p class="muted small">${list.length} học viên${list.length > 300 ? ' (hiển thị 300 đầu tiên, hãy tìm kiếm để lọc)' : ''}</p>
-        <div class="tbl-wrap"><table><tr><th>Mã</th><th>Họ tên</th><th>Cấp quản lý</th><th>Chức danh</th><th>Tài khoản</th><th></th></tr>
+        <div class="tbl-wrap"><table><tr><th>Mã</th><th>Họ tên</th><th>Chức danh</th><th>Tài khoản</th><th></th></tr>
         ${shown.map((s) => { const p = pmap[s.code]; return `<tr>
-          <td>${esc(s.code)}</td><td>${esc(s.full_name)}</td><td>${esc(s.manager)}</td><td>${esc(s.title)}</td>
+          <td>${esc(s.code)}</td><td>${esc(s.full_name)}</td><td>${esc(s.title)}</td>
           <td>${p ? (p.must_change_password ? '<span class="badge warn">Chờ đổi mật khẩu</span>' : '<span class="badge ok">Đã kích hoạt</span>') : '<span class="badge gray">Chưa đăng nhập lần đầu</span>'}${p?.device_id ? ' <span class="badge">Đã gắn thiết bị</span>' : ''}</td>
           <td class="act">${p ? `<button class="btn sm ghost" data-resetpw="${esc(s.code)}">Đặt lại MK</button>` : ''}
             ${p?.device_id ? `<button class="btn sm ghost" data-reset="${esc(s.code)}">Đặt lại thiết bị</button>` : ''}
@@ -862,7 +898,7 @@
         .sort((a, b) => String(a.full_name).localeCompare(String(b.full_name), 'vi'));
       for (const st of stu) {
         const key = c.id + '|' + st.code;
-        summary[key] = { 'Lớp': c.name, 'Mã HV': st.code, 'Họ tên': st.full_name, 'Cấp quản lý': st.manager || '', 'Chức danh': st.title || '',
+        summary[key] = { 'Lớp': c.name, 'Mã HV': st.code, 'Họ tên': st.full_name, 'Chức danh': st.title || '',
           'Đúng giờ': 0, 'Muộn': 0, 'Vắng': 0, 'Chưa mở': 0 };
         for (const s of sess) {
           const a = amap[s.id + '|' + st.code];
@@ -871,7 +907,7 @@
           if (summary[key][sKey] !== undefined) summary[key][sKey]++;
           detail.push({
             'Lớp': c.name, 'Loại lớp': c.class_types?.name || '', 'Buổi': s.session_no, 'Nội dung': s.content || '',
-            'Ngày học': fmtDate(s.session_date), 'Mã HV': st.code, 'Họ tên': st.full_name, 'Cấp quản lý': st.manager || '',
+            'Ngày học': fmtDate(s.session_date), 'Mã HV': st.code, 'Họ tên': st.full_name,
             'Chức danh': st.title || '', 'Trạng thái': status,
             'Giờ điểm danh': a ? fmtTime(a.checked_at) : '', 'Hình thức': a ? (a.source === 'manual' ? 'Giảng viên điểm danh' : 'QR') : '',
           });
