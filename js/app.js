@@ -155,13 +155,33 @@
     if (!location.hash || location.hash === '#') nav(TABS[me.role][0][0]); else render();
   }
 
+  // ---------------------------------------------------------------- thương hiệu (logo lấy từ asahilife.com)
+  const LOGO_URL = 'https://static-prod.asahilife.com/logo/main-logo-secondary.webp?v=1.0.9';
+  const SYMBOL_URL = 'https://static-prod.asahilife.com/logo/ASAHI_SYMBOL.svg?v=1.0.9';
+  // Logo trắng, dùng trên nền navy. Nếu ảnh không tải được thì hiện chữ thay thế.
+  function logoHtml(h) {
+    return `<img class="logo" src="${LOGO_URL}" alt="Asahi Life" height="${h}" onerror="this.outerHTML='<span class=&quot;logo-fb&quot;>Asahi Life</span>'">`;
+  }
+  function authHero() {
+    return `<div class="auth-hero">
+      <div class="auth-logo">${logoHtml(34)}</div>
+      <div class="auth-title">Training Academy</div>
+      <div class="auth-div"><i></i><img src="${SYMBOL_URL}" alt="" height="28" onerror="this.style.display='none'"><i></i></div>
+      <div class="auth-sub">Điểm danh lớp học</div>
+    </div>`;
+  }
+  function footerHtml() {
+    return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
+      <p>Asahi Life - Training Academy · Hệ thống điểm danh lớp học</p></div></footer>`;
+  }
+
   // ---------------------------------------------------------------- đăng nhập / đăng ký
   function viewAuth(mode) {
     runCleanups();
     const login = mode === 'login';
     app.innerHTML = `
       <div class="auth">
-        <div class="brand big">Asahi Life <span>- Training Academy</span></div>
+        ${authHero()}
         <div class="card">
           ${login ? '' : '<h3 style="margin:0 0 6px">Đăng ký tài khoản giảng viên / admin</h3>'}
           <form id="f" autocomplete="on">
@@ -234,7 +254,7 @@
     runCleanups();
     app.innerHTML = `
       <div class="auth">
-        <div class="brand big">Asahi Life <span>- Training Academy</span></div>
+        ${authHero()}
         <div class="card">
           <h2>Quên mật khẩu</h2>
           <p class="muted small">Nhập mã học viên. Mật khẩu sẽ quay về chính mã học viên, sau đó bạn đăng nhập và đặt mật khẩu mới.</p>
@@ -268,7 +288,7 @@
     runCleanups();
     app.innerHTML = `
       <div class="auth">
-        <div class="brand big">Asahi Life <span>- Training Academy</span></div>
+        ${authHero()}
         <div class="card">
           <h2>Đặt mật khẩu mới</h2>
           <p class="muted small">Xin chào ${esc(me.full_name || '')}. Vì bảo mật, bạn cần đổi mật khẩu trước khi sử dụng (ít nhất 6 ký tự, khác mã học viên).</p>
@@ -320,14 +340,15 @@
     const tabKey = SUBROUTES[route] || route;
     app.innerHTML = `
       <div class="topbar">
-        <div class="brand">Asahi Life <span>- Training Academy</span></div>
+        <div class="brand">${logoHtml(26)}</div>
         <div class="who"><span class="name">${esc(me.full_name || me.email)}</span>
           <span class="badge">${ROLE_LABEL[me.role]}</span>
           <button class="btn ghost sm" id="logout">Thoát</button></div>
       </div>
       <div class="tabs">${TABS[me.role].map(([k, l]) =>
         `<a href="#/${k}" class="${k === tabKey ? 'on' : ''}">${l}</a>`).join('')}</div>
-      <main id="main"></main>`;
+      <main id="main"></main>
+      ${footerHtml()}`;
     $('#logout').onclick = () => db.auth.signOut();
     const el = $('#main');
     const views = {
