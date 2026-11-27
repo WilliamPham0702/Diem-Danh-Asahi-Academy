@@ -61,6 +61,7 @@ create table if not exists public.class_type_sessions (
 alter table public.class_types add column if not exists max_absent int;
 alter table public.class_type_sessions add column if not exists day_no int;
 alter table public.class_type_sessions add column if not exists shift text;
+alter table public.class_type_sessions add column if not exists counts_absent boolean not null default true;
 alter table public.class_type_sessions drop constraint if exists cts_shift_chk;
 alter table public.class_type_sessions add constraint cts_shift_chk check (shift in ('sang', 'chieu'));
 
@@ -90,6 +91,7 @@ create table if not exists public.class_sessions (
   unique (class_id, session_no)
 );
 alter table public.class_sessions add column if not exists shift text;
+alter table public.class_sessions add column if not exists counts_absent boolean not null default true;
 alter table public.class_sessions drop constraint if exists cs_shift_chk;
 alter table public.class_sessions add constraint cs_shift_chk check (shift in ('sang', 'chieu'));
 
@@ -410,11 +412,11 @@ begin
   values (trim(p_name), p_type, p_start, auth.uid())
   returning id into cid;
 
-  insert into public.class_sessions (class_id, session_no, content, session_date, shift)
+  insert into public.class_sessions (class_id, session_no, content, session_date, shift, counts_absent)
   select cid, t.session_no, t.content,
          case when t.day_no is null then p_start + (t.session_no - 1)
               else public.add_workdays(p_start, t.day_no - 1) end,
-         t.shift
+         t.shift, t.counts_absent
     from public.class_type_sessions t
    where t.class_type_id = p_type;
 
@@ -662,3 +664,7 @@ begin
     (20, 10, 'chieu', 'Kiểm tra đánh giá. Ký hợp đồng và Tổng kết')
   ) as v(n, d, sh, c);
 end $$;
+
+-- Thi MOF khong tinh vao so buoi vang
+update public.class_type_sessions set counts_absent = false
+ where content = 'Thi MOF';

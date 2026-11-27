@@ -716,9 +716,9 @@
   }
 
   const SHIFT_LABEL = { sang: 'Sáng', chieu: 'Chiều' };
-  // Số buổi vắng = buổi đã mở điểm danh mà học viên không có bản ghi nào
+  // Số buổi vắng = buổi đã mở điểm danh mà học viên không có bản ghi nào (buổi Thi MOF không tính)
   function absentCount(sessions, code, attSet) {
-    return sessions.filter((s) => s.opened_at && !attSet.has(s.id + '|' + code)).length;
+    return sessions.filter((s) => s.opened_at && s.counts_absent !== false && !attSet.has(s.id + '|' + code)).length;
   }
 
   // ================================================================ GIẢNG VIÊN: chi tiết buổi học
