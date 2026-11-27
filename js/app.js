@@ -479,7 +479,7 @@
       else if (k.includes('quanly') || k.includes('manager')) continue; // không lưu cấp quản lý (kể cả cột gộp "cấp quản lý và chức danh")
       else if (k.includes('chucdanh') || k.includes('chucvu') || k === 'title') out.title = v;
       else if (['mahocvien', 'mahv', 'mshv', 'ma', 'code', 'mahocvien'].includes(k) || k.includes('mahocvien')) out.code = normCode(v);
-      else if (k.includes('tenhocvien') || k.includes('hoten') || k === 'ten' || k === 'name') out.full_name = v;
+      else if (k.includes('tenhocvien') || k.includes('hoten') || k.includes('hovaten') || k === 'ten' || k === 'name' || k === 'fullname') out.full_name = v;
     }
     return out;
   }
@@ -487,12 +487,17 @@
   async function readStudentsFile(file) {
     const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: false });
-    const seen = new Set(); const ok = []; let skipped = 0;
-    for (const r of rows) {
+    const seen = new Set(); const ok = []; const bad = []; let skipped = 0;
+    rows.forEach((r, i) => {
+      if (!Object.values(r).some((v) => String(v).trim())) return; // dòng trống
       const s = mapRow(r);
-      if (!s.code || !s.full_name || seen.has(s.code)) { skipped++; continue; }
+      if (!s.code || !s.full_name) { bad.push(i + 2); return; }
+      if (seen.has(s.code)) { skipped++; return; }
       seen.add(s.code); ok.push(s);
-    }
+    });
+    // File lỗi thì không cho tiếp tục (không tạo lớp, không nhập)
+    if (!ok.length) throw new Error('File không có học viên hợp lệ. Cần các cột "Mã học viên" và "Họ và tên" (dòng đầu là tiêu đề cột).');
+    if (bad.length) throw new Error(`File lỗi: dòng ${bad.slice(0, 8).join(', ')}${bad.length > 8 ? '...' : ''} thiếu mã học viên hoặc họ tên. Hãy sửa file rồi tải lại.`);
     return { rows: ok, skipped };
   }
 
