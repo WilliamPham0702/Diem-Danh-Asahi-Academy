@@ -1,0 +1,490 @@
+-- =====================================================================
+-- DIEM DANH ASAHI ACADEMY - schema cho Supabase (chay 1 lan trong SQL Editor)
+-- =====================================================================
+
+create extension if not exists pgcrypto with schema extensions;
+
+-- ---------------------------------------------------------------------
+-- 1. Bang du lieu
+-- ---------------------------------------------------------------------
+
+-- Khoa bi mat dung de ky ma QR. Khong ai doc duoc tu web (khong co policy).
+create table if not exists public.app_secret (
+  id int primary key default 1 check (id = 1),
+  secret text not null default encode(extensions.gen_random_bytes(32), 'hex')
+);
+insert into public.app_secret (id) values (1) on conflict do nothing;
+
+-- Email admin / giang vien duoc phep dang ky tai khoan
+create table if not exists public.allowed_staff (
+  email text primary key,
+  full_name text,
+  role text not null check (role in ('admin', 'teacher'))
+);
+
+-- Danh sach hoc vien (nguon import tu Excel)
+create table if not exists public.students (
+  code text primary key,
+  full_name text not null,
+  manager text,
+  title text,
+  email text not null
+);
+create unique index if not exists students_email_uq on public.students (lower(email));
+
+create table if not exists public.profiles (
+  id uuid primary key references auth.users (id) on delete cascade,
+  email text not null,
+  full_name text,
+  role text not null check (role in ('admin', 'teacher', 'student')),
+  student_code text references public.students (code) on delete set null,
+  device_id text
+);
+
+create table if not exists public.class_types (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  description text
+);
+
+create table if not exists public.class_type_sessions (
+  id uuid primary key default gen_random_uuid(),
+  class_type_id uuid not null references public.class_types (id) on delete cascade,
+  session_no int not null,
+  content text not null,
+  unique (class_type_id, session_no)
+);
+
+create table if not exists public.classes (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  class_type_id uuid references public.class_types (id) on delete set null,
+  start_date date not null,
+  late_minutes int not null default 15,
+  created_by uuid references public.profiles (id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.class_students (
+  class_id uuid not null references public.classes (id) on delete cascade,
+  student_code text not null references public.students (code) on delete cascade,
+  primary key (class_id, student_code)
+);
+
+create table if not exists public.class_sessions (
+  id uuid primary key default gen_random_uuid(),
+  class_id uuid not null references public.classes (id) on delete cascade,
+  session_no int not null,
+  content text,
+  session_date date,
+  opened_at timestamptz,
+  closed boolean not null default false,
+  unique (class_id, session_no)
+);
+
+create table if not exists public.attendance (
+  id uuid primary key default gen_random_uuid(),
+  session_id uuid not null references public.class_sessions (id) on delete cascade,
+  student_code text not null,
+  student_name text,
+  checked_at timestamptz not null default now(),
+  device_id text,
+  source text not null default 'qr' check (source in ('qr', 'manual')),
+  unique (session_id, student_code)
+);
+
+-- ---------------------------------------------------------------------
+-- 2. Ham tro giup phan quyen
+-- ---------------------------------------------------------------------
+
+create or replace function public.current_role_name()
+returns text language sql stable security definer set search_path = public as $$
+  select role from public.profiles where id = auth.uid()
+$$;
+
+create or replace function public.is_admin()
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce(public.current_role_name() = 'admin', false)
+$$;
+
+create or replace function public.is_staff()
+returns boolean language sql stable security definer set search_path = public as $$
+  select coalesce(public.current_role_name() in ('admin', 'teacher'), false)
+$$;
+
+create or replace function public.my_student_code()
+returns text language sql stable security definer set search_path = public as $$
+  select student_code from public.profiles where id = auth.uid()
+$$;
+
+create or replace function public.can_manage_class(cid uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.is_admin()
+      or exists (select 1 from public.classes c where c.id = cid and c.created_by = auth.uid())
+$$;
+
+-- ---------------------------------------------------------------------
+-- 3. Dang ky tai khoan: chi cho email nam trong danh sach
+-- ---------------------------------------------------------------------
+
+create or replace function public.handle_new_user()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  st public.allowed_staff%rowtype;
+  s public.students%rowtype;
+  v_code text;
+begin
+  select * into st from public.allowed_staff where lower(email) = lower(new.email);
+  if found then
+    insert into public.profiles (id, email, full_name, role)
+    values (new.id, new.email, coalesce(st.full_name, new.email), st.role);
+    return new;
+  end if;
+
+  v_code := upper(trim(coalesce(new.raw_user_meta_data ->> 'student_code', '')));
+  select * into s from public.students
+   where lower(students.email) = lower(new.email) and upper(students.code) = v_code;
+  if not found then
+    raise exception 'EMAIL_OR_CODE_NOT_IN_LIST';
+  end if;
+
+  insert into public.profiles (id, email, full_name, role, student_code)
+  values (new.id, new.email, s.full_name, 'student', s.code);
+  return new;
+end $$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+-- ---------------------------------------------------------------------
+-- 4. Ma QR xoay: ky bang HMAC, het han sau 10 giay (+5 giay du phong mang)
+-- ---------------------------------------------------------------------
+
+create or replace function public.make_token(p_session uuid, p_ts bigint)
+returns text language plpgsql security definer set search_path = public, extensions as $$
+declare
+  sec text;
+  payload text;
+begin
+  select secret into sec from public.app_secret where id = 1;
+  payload := p_session::text || '.' || p_ts::text;
+  return payload || '.' || encode(hmac(payload, sec, 'sha256'), 'hex');
+end $$;
+
+revoke all on function public.make_token(uuid, bigint) from public, anon, authenticated;
+
+-- Giang vien goi ham nay moi 10 giay de lay ma moi
+create or replace function public.get_qr_token(p_session uuid)
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
+declare
+  cs record;
+begin
+  select s.id, s.class_id, s.session_no, s.content, s.closed, c.name as class_name
+    into cs
+    from public.class_sessions s
+    join public.classes c on c.id = s.class_id
+   where s.id = p_session;
+  if not found then raise exception 'SESSION_NOT_FOUND'; end if;
+  if not public.can_manage_class(cs.class_id) then raise exception 'FORBIDDEN'; end if;
+  if cs.closed then raise exception 'SESSION_CLOSED'; end if;
+
+  update public.class_sessions
+     set opened_at = coalesce(opened_at, now())
+   where id = p_session;
+
+  return jsonb_build_object(
+    'token', public.make_token(p_session, extract(epoch from now())::bigint),
+    'class_name', cs.class_name,
+    'session_no', cs.session_no,
+    'content', cs.content
+  );
+end $$;
+
+-- Hoc vien quet QR -> goi ham nay
+create or replace function public.check_in(p_token text, p_device text)
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
+declare
+  p public.profiles%rowtype;
+  st public.students%rowtype;
+  sess record;
+  parts text[];
+  v_session uuid;
+  v_ts bigint;
+  v_now bigint;
+  v_late boolean;
+  v_checked timestamptz;
+  msg_invalid constant text := 'Bạn đang điểm danh trên mã QR không hợp lệ do người khác chụp lại';
+begin
+  select * into p from public.profiles where id = auth.uid();
+  if not found or p.role <> 'student' or p.student_code is null then
+    return jsonb_build_object('status', 'forbidden', 'message', 'Chỉ tài khoản học viên mới điểm danh được');
+  end if;
+
+  parts := string_to_array(coalesce(p_token, ''), '.');
+  if array_length(parts, 1) is distinct from 3 then
+    return jsonb_build_object('status', 'invalid', 'message', msg_invalid);
+  end if;
+  begin
+    v_session := parts[1]::uuid;
+    v_ts := parts[2]::bigint;
+  exception when others then
+    return jsonb_build_object('status', 'invalid', 'message', msg_invalid);
+  end;
+  if public.make_token(v_session, v_ts) <> p_token then
+    return jsonb_build_object('status', 'invalid', 'message', msg_invalid);
+  end if;
+
+  select s.id, s.class_id, s.session_no, s.content, s.closed, s.opened_at,
+         c.name as class_name, c.late_minutes
+    into sess
+    from public.class_sessions s
+    join public.classes c on c.id = s.class_id
+   where s.id = v_session;
+  if not found then
+    return jsonb_build_object('status', 'invalid', 'message', msg_invalid);
+  end if;
+
+  -- Da diem danh roi (quet lai ma cu hay ma moi deu bao nhu nhau)
+  if exists (select 1 from public.attendance
+              where session_id = v_session and student_code = p.student_code) then
+    return jsonb_build_object('status', 'already',
+      'message', 'Bạn đã điểm danh lớp này không cần điểm danh lại');
+  end if;
+
+  -- Ma het han (hoc vien khac chup lai gui di)
+  v_now := extract(epoch from now())::bigint;
+  if v_now - v_ts > 15 or v_ts - v_now > 5 then
+    return jsonb_build_object('status', 'expired', 'message', msg_invalid);
+  end if;
+
+  if sess.closed then
+    return jsonb_build_object('status', 'closed', 'message', 'Buổi học này đã đóng điểm danh');
+  end if;
+
+  if not exists (select 1 from public.class_students
+                  where class_id = sess.class_id and student_code = p.student_code) then
+    return jsonb_build_object('status', 'not_in_class', 'message', 'Bạn không có trong danh sách lớp này');
+  end if;
+
+  -- Khoa 1 thiet bi / 1 tai khoan
+  if p_device is null or length(p_device) < 8 then
+    return jsonb_build_object('status', 'invalid', 'message', 'Không nhận diện được thiết bị');
+  end if;
+  if p.device_id is null then
+    update public.profiles set device_id = p_device where id = p.id;
+  elsif p.device_id <> p_device then
+    return jsonb_build_object('status', 'device_mismatch',
+      'message', 'Tài khoản này đã gắn với thiết bị khác. Hãy báo giảng viên để đặt lại thiết bị');
+  end if;
+
+  select * into st from public.students where code = p.student_code;
+
+  insert into public.attendance (session_id, student_code, student_name, device_id, source)
+  values (v_session, p.student_code, st.full_name, p_device, 'qr')
+  on conflict (session_id, student_code) do nothing
+  returning checked_at into v_checked;
+
+  if v_checked is null then
+    return jsonb_build_object('status', 'already',
+      'message', 'Bạn đã điểm danh lớp này không cần điểm danh lại');
+  end if;
+
+  v_late := sess.opened_at is not null
+        and v_checked > sess.opened_at + make_interval(mins => sess.late_minutes);
+
+  return jsonb_build_object(
+    'status', 'ok',
+    'message', case when v_late then 'Điểm danh thành công (đến muộn)' else 'Điểm danh thành công' end,
+    'late', v_late,
+    'checked_at', v_checked,
+    'class_name', sess.class_name,
+    'session_no', sess.session_no,
+    'content', sess.content,
+    'student_code', st.code,
+    'student_name', st.full_name
+  );
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 5. Cac ham quan tri
+-- ---------------------------------------------------------------------
+
+-- Tao lop: tu dong tao cac buoi hoc theo loai lop
+create or replace function public.create_class(
+  p_name text, p_type uuid, p_start date, p_late int, p_codes text[]
+) returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  cid uuid;
+begin
+  if not public.is_staff() then raise exception 'FORBIDDEN'; end if;
+  if coalesce(trim(p_name), '') = '' then raise exception 'NAME_REQUIRED'; end if;
+
+  insert into public.classes (name, class_type_id, start_date, late_minutes, created_by)
+  values (trim(p_name), p_type, p_start, coalesce(p_late, 15), auth.uid())
+  returning id into cid;
+
+  insert into public.class_sessions (class_id, session_no, content, session_date)
+  select cid, t.session_no, t.content, p_start + (t.session_no - 1)
+    from public.class_type_sessions t
+   where t.class_type_id = p_type;
+
+  insert into public.class_students (class_id, student_code)
+  select cid, s.code from public.students s
+   where upper(s.code) = any (select upper(trim(x)) from unnest(coalesce(p_codes, '{}')) x)
+  on conflict do nothing;
+
+  return cid;
+end $$;
+
+-- Dat lai thiet bi cho hoc vien (khi doi dien thoai)
+create or replace function public.reset_device(p_student_code text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_staff() then raise exception 'FORBIDDEN'; end if;
+  update public.profiles set device_id = null where student_code = p_student_code;
+end $$;
+
+-- Admin xoa tai khoan (hoc vien hoac giang vien)
+create or replace function public.admin_delete_user(p_user uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'FORBIDDEN'; end if;
+  if p_user = auth.uid() then raise exception 'CANNOT_DELETE_SELF'; end if;
+  delete from auth.users where id = p_user;
+end $$;
+
+-- Chi cho nguoi da dang nhap goi cac ham cong khai
+revoke all on function public.get_qr_token(uuid) from public, anon;
+revoke all on function public.check_in(text, text) from public, anon;
+revoke all on function public.create_class(text, uuid, date, int, text[]) from public, anon;
+revoke all on function public.reset_device(text) from public, anon;
+revoke all on function public.admin_delete_user(uuid) from public, anon;
+grant execute on function public.get_qr_token(uuid) to authenticated;
+grant execute on function public.check_in(text, text) to authenticated;
+grant execute on function public.create_class(text, uuid, date, int, text[]) to authenticated;
+grant execute on function public.reset_device(text) to authenticated;
+grant execute on function public.admin_delete_user(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------
+-- 6. Row Level Security
+-- ---------------------------------------------------------------------
+
+alter table public.app_secret enable row level security;
+alter table public.allowed_staff enable row level security;
+alter table public.students enable row level security;
+alter table public.profiles enable row level security;
+alter table public.class_types enable row level security;
+alter table public.class_type_sessions enable row level security;
+alter table public.classes enable row level security;
+alter table public.class_students enable row level security;
+alter table public.class_sessions enable row level security;
+alter table public.attendance enable row level security;
+
+-- allowed_staff: chi admin
+drop policy if exists allowed_staff_admin on public.allowed_staff;
+create policy allowed_staff_admin on public.allowed_staff
+  for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+-- profiles: xem cua minh, staff xem tat ca. Khong ghi truc tiep.
+drop policy if exists profiles_select on public.profiles;
+create policy profiles_select on public.profiles
+  for select to authenticated using (id = auth.uid() or public.is_staff());
+
+-- students
+drop policy if exists students_select on public.students;
+create policy students_select on public.students
+  for select to authenticated using (public.is_staff() or code = public.my_student_code());
+drop policy if exists students_insert on public.students;
+create policy students_insert on public.students
+  for insert to authenticated with check (public.is_staff());
+drop policy if exists students_update on public.students;
+create policy students_update on public.students
+  for update to authenticated using (public.is_staff()) with check (public.is_staff());
+drop policy if exists students_delete on public.students;
+create policy students_delete on public.students
+  for delete to authenticated using (public.is_admin());
+
+-- class_types / class_type_sessions: staff xem, admin sua
+drop policy if exists class_types_select on public.class_types;
+create policy class_types_select on public.class_types
+  for select to authenticated using (public.is_staff());
+drop policy if exists class_types_admin on public.class_types;
+create policy class_types_admin on public.class_types
+  for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists cts_select on public.class_type_sessions;
+create policy cts_select on public.class_type_sessions
+  for select to authenticated using (public.is_staff());
+drop policy if exists cts_admin on public.class_type_sessions;
+create policy cts_admin on public.class_type_sessions
+  for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+-- classes (tao lop qua ham create_class)
+drop policy if exists classes_select on public.classes;
+create policy classes_select on public.classes
+  for select to authenticated using (
+    public.can_manage_class(id)
+    or exists (select 1 from public.class_students cs
+                where cs.class_id = classes.id and cs.student_code = public.my_student_code())
+  );
+drop policy if exists classes_update on public.classes;
+create policy classes_update on public.classes
+  for update to authenticated using (public.can_manage_class(id)) with check (public.can_manage_class(id));
+drop policy if exists classes_delete on public.classes;
+create policy classes_delete on public.classes
+  for delete to authenticated using (public.can_manage_class(id));
+
+-- class_students
+drop policy if exists cs_select on public.class_students;
+create policy cs_select on public.class_students
+  for select to authenticated using (
+    public.can_manage_class(class_id) or student_code = public.my_student_code()
+  );
+drop policy if exists cs_insert on public.class_students;
+create policy cs_insert on public.class_students
+  for insert to authenticated with check (public.can_manage_class(class_id));
+drop policy if exists cs_delete on public.class_students;
+create policy cs_delete on public.class_students
+  for delete to authenticated using (public.can_manage_class(class_id));
+
+-- class_sessions
+drop policy if exists sessions_select on public.class_sessions;
+create policy sessions_select on public.class_sessions
+  for select to authenticated using (
+    public.can_manage_class(class_id)
+    or exists (select 1 from public.class_students cs
+                where cs.class_id = class_sessions.class_id and cs.student_code = public.my_student_code())
+  );
+drop policy if exists sessions_update on public.class_sessions;
+create policy sessions_update on public.class_sessions
+  for update to authenticated using (public.can_manage_class(class_id)) with check (public.can_manage_class(class_id));
+
+-- attendance: hoc vien xem cua minh; staff xem/diem danh tay/huy trong lop minh quan ly
+drop policy if exists attendance_select on public.attendance;
+create policy attendance_select on public.attendance
+  for select to authenticated using (
+    student_code = public.my_student_code()
+    or exists (select 1 from public.class_sessions s
+                where s.id = attendance.session_id and public.can_manage_class(s.class_id))
+  );
+drop policy if exists attendance_insert on public.attendance;
+create policy attendance_insert on public.attendance
+  for insert to authenticated with check (
+    source = 'manual'
+    and exists (select 1 from public.class_sessions s
+                 where s.id = attendance.session_id and public.can_manage_class(s.class_id))
+  );
+drop policy if exists attendance_delete on public.attendance;
+create policy attendance_delete on public.attendance
+  for delete to authenticated using (
+    exists (select 1 from public.class_sessions s
+             where s.id = attendance.session_id and public.can_manage_class(s.class_id))
+  );
+
+-- ---------------------------------------------------------------------
+-- 7. Tao admin dau tien (sua email roi chay), sau do vao web Dang ky
+-- ---------------------------------------------------------------------
+-- insert into public.allowed_staff (email, full_name, role)
+-- values ('email-cua-ban@gmail.com', 'Pham Nhut Thanh', 'admin');
