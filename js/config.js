@@ -2,8 +2,8 @@
 // Hai giá trị SUPABASE_* là công khai, không phải mật khẩu.
 // TUYỆT ĐỐI KHÔNG dán "service_role key" vào file này.
 window.APP_CONFIG = {
-  SUPABASE_URL: "",
-  SUPABASE_ANON_KEY: "",
+  SUPABASE_URL: "https://ggfnxfvzhetysdwupntn.supabase.co",
+  SUPABASE_ANON_KEY: "sb_publishable_LcYxwfkRX8rvectbJ56DJQ_H6ETK_xx",
 
   // Học viên đăng nhập bằng Mã học viên. Phía sau hệ thống ghép thành email nội bộ <mã>@<LOGIN_DOMAIN>.
   // Không có email thật nào được gửi đi. Nếu Supabase báo email không hợp lệ, hãy đổi sang tên miền khác đang có email thật.
