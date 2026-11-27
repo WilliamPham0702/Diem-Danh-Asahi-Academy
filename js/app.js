@@ -192,8 +192,7 @@
   function authHero() {
     return `<div class="auth-hero">
       <div class="auth-logo">${logoHtml(36)}</div>
-      <div class="auth-jp">新しい朝がはじまる</div>
-      <div class="auth-title">Training Academy</div>
+            <div class="auth-title">Training Academy</div>
       <div class="auth-div"><i></i><img src="${SYMBOL_URL}" alt="" height="28" onerror="this.style.display='none'"><i></i></div>
       <div class="auth-sub">Điểm danh lớp học</div>
     </div>`;
@@ -227,7 +226,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-10';
+  const APP_VERSION = '2026.11.28-11';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Life - Training Academy · Hệ thống điểm danh lớp học</p>
@@ -239,7 +238,6 @@
     runCleanups();
     const login = mode === 'login';
     app.innerHTML = `
-      ${bgVideoHtml()}
       <div class="auth">
         ${authHero()}
         <div class="card">
@@ -313,7 +311,6 @@
   function viewForgot() {
     runCleanups();
     app.innerHTML = `
-      ${bgVideoHtml()}
       <div class="auth">
         ${authHero()}
         <div class="card">
@@ -348,7 +345,6 @@
   function viewForceChange() {
     runCleanups();
     app.innerHTML = `
-      ${bgVideoHtml()}
       <div class="auth">
         ${authHero()}
         <div class="card">

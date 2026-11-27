@@ -262,3 +262,9 @@ html, body { width: 100%; max-width: 100%; overflow-x: hidden; }
 .auth-jp { letter-spacing: clamp(2px, 1.6vw, 6px); }
 .auth .card { overflow: hidden; }
 @media (orientation: portrait) { .bgv-v, .bgv-poster { object-position: 55% 50%; } }
+
+/* ===== v11: trang đăng nhập trở lại bản gốc (nền navy chuyển sắc, không video/ảnh) ===== */
+body:has(.auth) { background: var(--grad) fixed; }
+.auth { min-height: 0; display: block; }
+.auth .card { background: #fff; border: 0; border-radius: 8px; backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: 0 10px 30px rgba(0,20,60,.25); }
+.auth-title { font-size: clamp(30px, 9vw, 40px); text-shadow: none; }
