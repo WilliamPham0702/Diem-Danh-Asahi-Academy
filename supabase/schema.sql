@@ -74,6 +74,8 @@ create table if not exists public.classes (
   created_at timestamptz not null default now()
 );
 
+alter table public.classes add column if not exists graduation_date date;
+
 create table if not exists public.class_students (
   class_id uuid not null references public.classes (id) on delete cascade,
   student_code text not null references public.students (code) on delete cascade,
@@ -399,8 +401,9 @@ begin
 end $$;
 
 -- Tao lop: tu dong tao cac buoi hoc theo loai lop
+drop function if exists public.create_class(text, uuid, date, text[]);
 create or replace function public.create_class(
-  p_name text, p_type uuid, p_start date, p_codes text[]
+  p_name text, p_type uuid, p_start date, p_codes text[], p_grad date default null
 ) returns uuid language plpgsql security definer set search_path = public as $$
 declare
   cid uuid;
@@ -424,6 +427,11 @@ begin
   select cid, s.code from public.students s
    where upper(s.code) = any (select upper(trim(x)) from unnest(coalesce(p_codes, '{}')) x)
   on conflict do nothing;
+
+  -- Ngay tot nghiep: mac dinh = ngay hoc cuoi cung, giang vien co the chon ngay khac
+  update public.classes
+     set graduation_date = coalesce(p_grad, (select max(session_date) from public.class_sessions where class_id = cid))
+   where id = cid;
 
   return cid;
 end $$;
@@ -477,7 +485,7 @@ end $$;
 -- Chi cho nguoi da dang nhap goi cac ham cong khai
 revoke all on function public.get_qr_token(uuid) from public, anon;
 revoke all on function public.check_in(text, text) from public, anon;
-revoke all on function public.create_class(text, uuid, date, text[]) from public, anon;
+revoke all on function public.create_class(text, uuid, date, text[], date) from public, anon;
 revoke all on function public.reset_device(text) from public, anon;
 revoke all on function public.admin_delete_user(uuid) from public, anon;
 revoke all on function public.password_changed() from public, anon;
@@ -488,7 +496,7 @@ revoke all on function public.reset_password_by_code(text) from public;
 grant execute on function public.reset_password_by_code(text) to anon, authenticated;
 grant execute on function public.get_qr_token(uuid) to authenticated;
 grant execute on function public.check_in(text, text) to authenticated;
-grant execute on function public.create_class(text, uuid, date, text[]) to authenticated;
+grant execute on function public.create_class(text, uuid, date, text[], date) to authenticated;
 grant execute on function public.reset_device(text) to authenticated;
 grant execute on function public.admin_delete_user(uuid) to authenticated;
 

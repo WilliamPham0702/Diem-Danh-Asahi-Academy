@@ -533,12 +533,12 @@
     el.innerHTML = '<div class="card"><div class="row between"><h2>Lớp học</h2><button class="btn pink" id="new">+ Tạo lớp</button></div><div id="t" class="muted">Đang tải...</div></div>';
     $('#new').onclick = openCreateClass;
     const rows = await q(db.from('classes')
-      .select('id, name, start_date, class_types(name), class_students(count), class_sessions(count)')
+      .select('id, name, start_date, graduation_date, class_types(name), class_students(count), class_sessions(count)')
       .order('created_at', { ascending: false }));
     $('#t').outerHTML = rows.length ? `<div class="tbl-wrap"><table>
-      <tr><th>Tên lớp</th><th>Loại lớp</th><th>Ngày bắt đầu</th><th>Học viên</th><th>Số buổi</th><th></th></tr>
+      <tr><th>Tên lớp</th><th>Loại lớp</th><th>Ngày bắt đầu</th><th>Ngày tốt nghiệp</th><th>Học viên</th><th>Số buổi</th><th></th></tr>
       ${rows.map((c) => `<tr><td><b>${esc(c.name)}</b></td><td>${esc(c.class_types?.name || '')}</td>
-        <td>${esc(fmtDate(c.start_date))}</td><td>${c.class_students?.[0]?.count ?? 0}</td>
+        <td>${esc(fmtDate(c.start_date))}</td><td>${esc(fmtDate(c.graduation_date))}</td><td>${c.class_students?.[0]?.count ?? 0}</td>
         <td>${c.class_sessions?.[0]?.count ?? 0}</td>
         <td class="act"><a class="btn sm" href="#/class/${c.id}">Mở lớp</a></td></tr>`).join('')}</table></div>`
       : '<p class="muted">Chưa có lớp nào. Bấm "Tạo lớp" để bắt đầu.</p>';
@@ -546,6 +546,7 @@
 
   async function openCreateClass() {
     const types = await q(db.from('class_types').select('id, name, class_type_sessions(count)').order('name'));
+    const sessList = await q(db.from('class_type_sessions').select('class_type_id, day_no'));
     if (!types.length) { toast('Chưa có loại lớp nào. Admin cần tạo loại lớp trước.', 'err'); return; }
     const today = new Date().toISOString().slice(0, 10);
     modal(`<h2>Tạo lớp</h2>
@@ -556,6 +557,7 @@
             `<option value="${t.id}">${esc(t.name)} (${t.class_type_sessions?.[0]?.count ?? 0} buổi)</option>`).join('')}</select></div>
           <div><label>Ngày học đầu tiên</label><input id="cd" type="date" value="${today}" required></div>
         </div>
+        <label>Ngày tốt nghiệp <span class="muted small">(tự tính, có thể chọn ngày khác)</span></label><input id="cg" type="date" required>
         <label>Danh sách học viên (file Excel)</label><input id="cx" type="file" accept=".xlsx,.xls,.csv">
         <div class="small muted">Cột: Mã học viên, Họ và tên, Chức danh. Cột Mã học viên nên để định dạng Text để giữ số 0 ở đầu. <a href="#" id="tpl">Tải file mẫu</a></div>
         <label>Hoặc nhập thêm mã học viên đã có trong hệ thống</label>
@@ -565,6 +567,22 @@
       </form>`, (m, close) => {
       $('#tpl', m).onclick = (e) => { e.preventDefault(); downloadTemplate(); };
       $('#cancel', m).onclick = close;
+      // Ngày tốt nghiệp mặc định = ngày học cuối của loại lớp (bỏ T7, CN), giảng viên có thể sửa
+      let gradTouched = false;
+      const iso = (d) => d.toISOString().slice(0, 10);
+      function autoGrad() {
+        if (gradTouched) return;
+        const start = $('#cd', m).value; if (!start) return;
+        const days = sessList.filter((x) => x.class_type_id === $('#ct', m).value);
+        const withDay = days.filter((x) => x.day_no);
+        const n = withDay.length ? Math.max(...withDay.map((x) => x.day_no)) : days.length;
+        const d = new Date(start + 'T00:00:00Z');
+        if (withDay.length) { let k = 0; while (k < n - 1) { d.setUTCDate(d.getUTCDate() + 1); if (d.getUTCDay() % 6 !== 0) k++; } }
+        else d.setUTCDate(d.getUTCDate() + Math.max(n - 1, 0));
+        $('#cg', m).value = iso(d);
+      }
+      $('#cg', m).onchange = () => { gradTouched = true; };
+      $('#cd', m).onchange = autoGrad; $('#ct', m).onchange = autoGrad; autoGrad();
       $('#cf', m).onsubmit = (e) => {
         e.preventDefault();
         busy($('#ok', m), async () => {
@@ -574,7 +592,7 @@
           codes = Array.from(new Set(codes));
           const id = await q(db.rpc('create_class', {
             p_name: $('#cn', m).value.trim().toUpperCase(), p_type: $('#ct', m).value, p_start: $('#cd', m).value,
-            p_codes: codes,
+            p_codes: codes, p_grad: $('#cg', m).value || null,
           }));
           const miss = codes.length ? await missingCodes(codes) : [];
           close();
@@ -614,7 +632,7 @@
       <div class="card">
         <div class="row between">
           <div><h2>${esc(cls.name)}</h2>
-            <span class="muted">${esc(cls.class_types?.name || '')} · bắt đầu ${esc(fmtDate(cls.start_date))}</span></div>
+            <span class="muted">${esc(cls.class_types?.name || '')} · bắt đầu ${esc(fmtDate(cls.start_date))}${cls.graduation_date ? ' · tốt nghiệp ' + esc(fmtDate(cls.graduation_date)) : ''}</span></div>
           <div class="row"><button class="btn ghost" id="exp">Xuất Excel</button>
             <button class="btn ghost" id="add">+ Thêm học viên</button>
             <button class="btn danger" id="del">Xóa lớp</button></div>
