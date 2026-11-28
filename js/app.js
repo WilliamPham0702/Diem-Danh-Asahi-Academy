@@ -23,13 +23,16 @@
     NAME_REQUIRED: 'Vui lòng nhập tên lớp',
     STUDENT_NOT_IN_LIST: 'Mã học viên không có trong danh sách. Hãy liên hệ giảng viên của bạn.',
     INVITE_INVALID: 'Email hoặc mã mời không đúng. Hãy liên hệ admin.',
+    CLASS_ENDED: 'Lớp học đã kết thúc, không thể thực hiện thao tác này',
+    ONLY_CREATOR_END: 'Chỉ giảng viên tạo lớp hoặc admin mới được kết thúc lớp',
+    ONLY_ADMIN_REOPEN: 'Chỉ admin mới mở lại được lớp đã kết thúc',
   };
   function errMsg(e) {
     const m = (e && e.message) || String(e);
     for (const k of Object.keys(ERR)) if (m.includes(k)) return ERR[k];
     if (/Database error saving new user/i.test(m)) return 'Thông tin đăng ký không hợp lệ. Hãy liên hệ giảng viên hoặc admin.';
     if (/Invalid login/i.test(m)) return 'Sai mã học viên/email hoặc mật khẩu';
-    if (/already registered/i.test(m)) return 'Tài khoản này đã tồn tại, hãy đăng nhập';
+    if (/already registered/i.test(m)) return 'Thông tin đăng ký không hợp lệ hoặc tài khoản đã tồn tại. Hãy liên hệ admin.';
     if (/Email not confirmed/i.test(m)) return 'Tài khoản chưa được xác nhận. Cần tắt "Confirm email" trong Supabase (xem README)';
     if (/at least 6/i.test(m)) return 'Mật khẩu cần ít nhất 6 ký tự';
     return m;
@@ -193,8 +196,15 @@
   const LOGO_URL = 'https://static-prod.asahilife.com/logo/main-logo-secondary.webp?v=1.0.9';
   const SYMBOL_URL = 'https://static-prod.asahilife.com/logo/ASAHI_SYMBOL.svg?v=1.0.9';
   // Logo trắng, dùng trên nền navy. Nếu ảnh không tải được thì hiện chữ thay thế.
+  // Xử lý ảnh lỗi (không dùng onerror nội tuyến để bật được chính sách bảo mật CSP)
+  document.addEventListener('error', (e) => {
+    const t = e.target;
+    if (!t || t.tagName !== 'IMG') return;
+    if (t.classList.contains('logo')) { const sp = document.createElement('span'); sp.className = 'logo-fb'; sp.textContent = 'Asahi Life'; t.replaceWith(sp); }
+    else if (t.classList.contains('symimg')) t.style.display = 'none';
+  }, true);
   function logoHtml(h) {
-    return `<img class="logo" src="${LOGO_URL}" alt="Asahi Life" height="${h}" onerror="this.outerHTML='<span class=&quot;logo-fb&quot;>Asahi Life</span>'">`;
+    return `<img class="logo" src="${LOGO_URL}" alt="Asahi Life" height="${h}">`;
   }
   // Video nền động cho toàn bộ web (video trên asahilife.com). Tạo bằng JS để iPhone chịu tự chạy.
   function initBg() {
@@ -223,7 +233,7 @@
       <div class="auth-logo">${logoHtml(36)}</div>
       <div class="auth-jp">新しい朝がはじまる</div>
             <div class="auth-title">Asahi Academy</div>
-      <div class="auth-div"><i></i><img src="${SYMBOL_URL}" alt="" height="28" onerror="this.style.display='none'"><i></i></div>
+      <div class="auth-div"><i></i><img class="symimg" src="${SYMBOL_URL}" alt="" height="28"><i></i></div>
       <div class="auth-sub">Training Delivery</div>
     </div>`;
   }
@@ -257,7 +267,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-31';
+  const APP_VERSION = '2026.11.28-32';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -310,6 +320,11 @@
           const isEmail = idRaw.includes('@');
           const code = isEmail ? '' : normCode(idRaw);
           const email = isEmail ? idRaw : codeToEmail(code);
+          const ident = isEmail ? idRaw.toLowerCase() : code;
+          const GENERIC = 'Sai mã học viên/email hoặc mật khẩu';
+          const lockMsg = (m) => `Tài khoản tạm khóa do nhập sai mật khẩu 5 lần. Thử lại sau ${m} phút, hoặc nhờ giảng viên đặt lại mật khẩu.`;
+          const st = await db.rpc('login_status', { p_id: ident });
+          if (st.data && st.data.locked) throw new Error(lockMsg(st.data.minutes));
           let { error } = await db.auth.signInWithPassword({ email, password });
           // Mật khẩu mặc định là mã học viên: gõ thiếu số 0 ở đầu thì tự bổ sung rồi thử lại
           if (error && !isEmail && /^\d+$/.test(password.trim()) && normCode(password) !== password) {
@@ -318,14 +333,19 @@
           // Lần đầu: học viên chưa có tài khoản, mật khẩu = mã học viên -> tự tạo tài khoản mặc định
           if (error && !isEmail && /Invalid login/i.test(error.message) && normCode(password) === code) {
             const r = await db.auth.signUp({ email, password: code, options: { data: { student_code: code } } });
-            if (r.error) {
-              if (/already registered/i.test(r.error.message)) throw new Error('Sai mã học viên hoặc mật khẩu. Nếu quên mật khẩu, bấm "Quên mật khẩu?" bên dưới.');
-              throw r.error;
-            }
-            if (!r.data.session) throw new Error('Chưa đăng nhập được: cần tắt "Confirm email" trong Supabase (xem README).');
-            error = null;
+            if (!r.error && r.data.session) error = null;
+            else if (!r.error) throw new Error('Chưa đăng nhập được: cần tắt "Confirm email" trong Supabase (xem README).');
           }
-          if (error) throw error;
+          if (error) {
+            // Mọi lỗi đăng nhập dùng cùng một thông báo (không để lộ mã nào có trong hệ thống)
+            if (/Invalid login/i.test(error.message)) {
+              const f = await db.rpc('login_fail', { p_id: ident });
+              if (f.data && f.data.locked) throw new Error(lockMsg(f.data.minutes));
+              throw new Error(GENERIC + (f.data && f.data.left != null && f.data.left <= 3 ? `. Còn ${f.data.left} lần thử` : ''));
+            }
+            throw error;
+          }
+          db.rpc('login_ok').then(() => {}, () => {});
           await enter();
         } else {
           if (password !== $('#pw2').value) throw new Error('Hai mật khẩu không giống nhau');
@@ -369,7 +389,7 @@
         const { error } = await db.rpc('reset_password_by_code', { p_code: code });
         if (error) throw error;
         msg.className = 'form-msg okm';
-        msg.textContent = 'Đã đặt lại. Hãy đăng nhập bằng mã học viên, mật khẩu cũng là mã học viên.';
+        msg.textContent = 'Nếu mã học viên hợp lệ, mật khẩu đã được đặt lại. Hãy đăng nhập bằng mã học viên, mật khẩu cũng là mã học viên.';
       } catch (err) {
         msg.className = 'form-msg err'; msg.textContent = errMsg(err);
       } finally { btn.disabled = false; }
@@ -558,7 +578,7 @@
     const card = (c, isOpen) => {
       const pct = c.total_sessions ? Math.round(100 * c.attended / c.total_sessions) : 0;
       return `<div class="ccard ${isOpen ? '' : 'go'}" ${isOpen ? '' : `data-go="1" role="button" tabindex="0"`}>
-      <div class="cc-top"><span class="cc-name">${esc(c.name)}</span>${isOpen ? '' : '<span class="badge ok">Đã tham gia</span>'}</div>
+      <div class="cc-top"><span class="cc-name">${esc(c.name)}</span>${isOpen ? '' : c.ended ? '<span class="badge gray">Đã kết thúc</span>' : '<span class="badge ok">Đã tham gia</span>'}</div>
       <div class="cc-meta"><div><span>Thời gian</span>${esc(fmtRange(c))}</div>
         ${c.location ? `<div><span>Địa điểm</span>${esc(c.location)}</div>` : ''}
         ${(c.teachers || []).length ? `<div><span>Giảng viên</span>${esc(c.teachers.join(', '))}</div>` : ''}</div>
@@ -610,13 +630,24 @@
     }
     addCleanup(stop);
 
+    // Vị trí: xin quyền một lần, ghi lại để giảng viên xem. Không cho phép vẫn điểm danh được (bị ghi "ngoài khu vực").
+    let pos = null; let watchId = null;
+    if (navigator.geolocation) {
+      try {
+        watchId = navigator.geolocation.watchPosition((p) => { pos = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }; },
+          () => { /* từ chối hoặc không lấy được: bỏ qua */ }, { enableHighAccuracy: true, maximumAge: 30000, timeout: 20000 });
+      } catch (e) { /* bỏ qua */ }
+      addCleanup(() => { if (watchId != null) navigator.geolocation.clearWatch(watchId); });
+    }
+
     function showResult(r) {
       const cls = { ok: 'ok', already: 'info', closed: 'warn', device_mismatch: 'warn', device_used: 'warn' }[r.status] || 'bad';
       const title = { ok: r.late ? 'Đã điểm danh (đến muộn)' : 'Điểm danh thành công', already: 'Đã điểm danh' }[r.status] || 'Chưa điểm danh được';
       let extra = '';
       if (r.status === 'ok') {
         extra = `<p class="small">Lớp: <b>${esc(r.class_name)}</b><br>Buổi ${esc(r.session_no)}: ${esc(r.content || '')}<br>
-          Học viên: <b>${esc(r.student_name)}</b> (${esc(r.student_code)})<br>Thời gian: <b>${esc(fmtTime(r.checked_at))}</b></p>`;
+          Học viên: <b>${esc(r.student_name)}</b> (${esc(r.student_code)})<br>Thời gian: <b>${esc(fmtTime(r.checked_at))}</b></p>`
+          + (r.out_of_area ? '<p class="small muted">Vị trí của bạn ngoài khu vực lớp hoặc chưa được cho phép. Hệ thống đã ghi nhận để giảng viên xem.</p>' : '');
       }
       $('#result').innerHTML = `<div class="result ${cls}"><h3>${title}</h3><div>${esc(r.status === 'ok' ? '' : r.message)}</div>${extra}</div>`;
       $('#start').textContent = r.status === 'ok' ? 'Quét buổi khác' : 'Quét lại';
@@ -625,7 +656,7 @@
 
     async function submit(token) {
       $('#result').innerHTML = '<p class="muted">Đang ghi nhận...</p>';
-      const { data, error } = await db.rpc('check_in', { p_token: token, p_device: deviceId() });
+      const { data, error } = await db.rpc('check_in', { p_token: token, p_device: deviceId(), p_lat: pos ? pos.lat : null, p_lng: pos ? pos.lng : null, p_acc: pos ? pos.acc : null });
       if (error) { showResult({ status: 'error', message: errMsg(error) }); return; }
       showResult(data);
     }
@@ -874,18 +905,28 @@
     const maxAbsent = cls.class_types?.max_absent;
     const absent = {}; roster.forEach((r) => { absent[r.student_code] = absentCount(sessions, r.student_code, attSet); });
     const teachers = await q(db.rpc('list_teachers'));
+    const ended = !!cls.ended_at;
+    const canEnd = me.role === 'admin' || cls.created_by === me.id;
     const warned = maxAbsent == null ? [] : roster.filter((r) => absent[r.student_code] > maxAbsent);
     roster.sort((a, b) => String(a.students?.full_name).localeCompare(String(b.students?.full_name), 'vi'));
 
     el.innerHTML = `
       <p><a href="#/classes">&larr; Danh sách lớp</a></p>
+      ${ended ? `<div class="card" style="border-color:#e0b4ba;background:#fff4f5"><b style="color:var(--bad)">Lớp đã kết thúc</b>
+        <span class="small muted"> · ${esc(fmtTime(cls.ended_at))}${cls.ended_by ? ' · bởi ' + esc(cls.ended_by) : ''}. Không thể mở QR hay sửa điểm danh.</span>
+        ${me.role === 'admin' ? '<div style="margin-top:8px"><button class="btn pink" id="reopen">Mở lại lớp (admin)</button></div>' : '<div class="small muted" style="margin-top:4px">Chỉ admin mới mở lại được lớp.</div>'}</div>` : ''}
       <div class="card">
         <div><h2>${esc(cls.name)}</h2>
           <span class="muted">${esc(cls.class_types?.name || '')} · bắt đầu ${esc(fmtDate(cls.start_date))}${cls.graduation_date ? ' · tốt nghiệp ' + esc(fmtDate(cls.graduation_date)) : ''}</span></div>
         <div class="grid2" style="margin-top:10px">
           <div><label>Địa điểm học</label><input id="loc" value="${esc(cls.location || '')}" placeholder="Nhập địa điểm học"></div>
           <div><label>Đăng ký</label><label style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="oen" style="width:auto"${cls.open_enrollment ? ' checked' : ''}> Mở đăng ký cho học viên</label></div></div>
+        ${canEnd ? `<div style="margin-top:10px"><label>Vị trí lớp (để kiểm tra khu vực điểm danh)</label>
+          <div class="row"><button class="btn ghost sm" id="setgeo" type="button">Đặt vị trí lớp = vị trí hiện tại của tôi</button>
+            <span class="small">Bán kính <input id="rad" type="number" min="30" max="2000" value="${cls.radius_m || 200}" style="width:80px;display:inline-block"> m</span></div>
+          <div class="small muted" id="geost">${cls.lat != null ? 'Đã đặt vị trí lớp (' + cls.lat.toFixed(5) + ', ' + cls.lng.toFixed(5) + ')' : 'Chưa đặt vị trí lớp: hệ thống chỉ ghi vị trí học viên, chưa so sánh.'}</div></div>` : ''}
         <div class="btnrow"><button class="btn ghost" id="exp">Xuất Excel</button>
+          ${canEnd && !ended ? '<button class="btn ghost" id="endcls">Kết thúc lớp</button>' : ''}
           <button class="btn ghost" id="add">+ Thêm học viên</button>
           <button class="btn danger" id="del">Xóa lớp</button></div>
       </div>
@@ -903,7 +944,7 @@
             <td>${s.closed ? '<span class="badge gray">Đã đóng</span>' : s.opened_at ? '<span class="badge ok">Đã mở</span>' : '<span class="badge warn">Chưa mở</span>'}</td>
             <td>${perSession[s.id] || 0}/${total}</td>
             <td class="act">
-              ${qrButtons(s, true)}
+              ${ended ? '' : qrButtons(s, true)}
               <a class="btn sm" href="#/session/${s.id}">Chi tiết</a></td></tr>`).join('')}
         </table></div></div>
       <div class="card"><h3>Học viên (${total})</h3>
@@ -923,6 +964,30 @@
 
     $('#loc').onchange = () => busy(null, async () => { await q(db.from('classes').update({ location: $('#loc').value.trim() || null }).eq('id', id)); toast('Đã lưu địa điểm', 'ok'); });
     $('#oen').onchange = () => busy(null, async () => { await q(db.from('classes').update({ open_enrollment: $('#oen').checked }).eq('id', id)); toast($('#oen').checked ? 'Đã mở đăng ký cho học viên' : 'Đã đóng đăng ký', 'ok'); });
+    if ($('#setgeo')) $('#setgeo').onclick = (e) => busy(e.target, () => new Promise((ok, no) => {
+      if (!navigator.geolocation) { no(new Error('Trình duyệt không hỗ trợ định vị')); return; }
+      navigator.geolocation.getCurrentPosition(async (p) => {
+        try {
+          const rad = Math.max(30, Math.min(2000, Number($('#rad').value) || 200));
+          await q(db.from('classes').update({ lat: p.coords.latitude, lng: p.coords.longitude, radius_m: rad }).eq('id', id));
+          $('#geost').textContent = `Đã đặt vị trí lớp (${p.coords.latitude.toFixed(5)}, ${p.coords.longitude.toFixed(5)}), bán kính ${rad} m`;
+          toast('Đã lưu vị trí lớp', 'ok'); ok();
+        } catch (er) { no(er); }
+      }, () => no(new Error('Không lấy được vị trí. Hãy cho phép quyền vị trí cho trình duyệt')), { enableHighAccuracy: true, timeout: 20000 });
+    }));
+    if ($('#reopen')) $('#reopen').onclick = (e) => { if (!confirm('Mở lại lớp này?')) return; busy(e.target, async () => { await q(db.rpc('reopen_class', { p_class: id })); toast('Đã mở lại lớp', 'ok'); render(); }); };
+    if ($('#endcls')) $('#endcls').onclick = () => {
+      const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' })).toISOString().slice(0, 10);
+      const lastDay = sessions.map((s) => s.session_date).filter(Boolean).sort().pop();
+      const early = lastDay && lastDay >= today;
+      modal(`<h3 style="text-align:center">${early ? '⚠ Chưa hết ngày học' : 'Kết thúc lớp'}</h3>
+        <p>${early ? `Lớp này còn buổi học đến <b>${esc(fmtDate(lastDay))}</b>. ` : ''}Khi kết thúc lớp:</p>
+        <ul class="small"><li>Không mở được mã QR và không sửa được điểm danh nữa.</li><li>Chỉ <b>admin</b> mới mở lại được lớp.</li></ul>
+        <div class="row" style="justify-content:center;margin-top:12px"><button class="btn danger" id="yesend">Kết thúc lớp</button><button class="btn ghost" id="noend">Hủy</button></div>`, (m, close) => {
+        $('#noend', m).onclick = close;
+        $('#yesend', m).onclick = () => busy($('#yesend', m), async () => { await q(db.rpc('end_class', { p_class: id })); close(); toast('Đã kết thúc lớp', 'ok'); render(); });
+      });
+    };
     $('#exp').onclick = (e) => busy(e.target, () => exportReport([id]));
     $('#add').onclick = () => openAddStudents(id);
     $('#del').onclick = (e) => {
@@ -1032,9 +1097,17 @@
     return a.late ? 'Muộn' : 'Đúng giờ';
   }
 
+  // Vị trí điểm danh: ngoài khu vực / trong khu vực / chưa có tọa độ lớp
+  function locBadge(a) {
+    if (!a || a.source === 'manual') return '';
+    if (a.out_of_area === true) return `<span class="badge bad" title="${a.dist_m != null ? 'Cách lớp khoảng ' + Math.round(a.dist_m) + ' m' : 'Không có vị trí / chưa cho phép'}">Ngoài khu vực</span>`;
+    if (a.out_of_area === false) return `<span class="badge ok" title="Cách lớp khoảng ${Math.round(a.dist_m || 0)} m">Trong khu vực</span>`;
+    return '<span class="badge gray" title="Lớp chưa đặt vị trí">Chưa đối chiếu</span>';
+  }
   async function viewSession(el, id) {
-    const sess = await q(db.from('class_sessions').select('*, classes(id, name)').eq('id', id).single());
+    const sess = await q(db.from('class_sessions').select('*, classes(id, name, ended_at)').eq('id', id).single());
     const cls = sess.classes;
+    const ended = !!cls.ended_at;
     const roster = await q(db.from('class_students').select('student_code, students(*)').eq('class_id', cls.id));
     const att = await q(db.from('attendance').select('*').eq('session_id', id));
     const map = {}; att.forEach((a) => { map[a.student_code] = a; });
@@ -1052,16 +1125,17 @@
       <div class="card"><div class="row between">
         <div><h2>Buổi ${sess.session_no}: ${esc(sess.content || '')}</h2>
           <span class="muted">${esc(fmtDate(sess.session_date))}${sess.opened_at ? ' · mở điểm danh lúc ' + esc(fmtTime(sess.opened_at)) : ''}</span></div>
-        ${sess.closed ? '<span class="badge gray">Đã đóng</span> ' : ''}${qrOpenable(sess) ? `<a class="btn pink" href="#/qr/${id}">Mở QR điểm danh</a>` : (me.role === 'admin' ? `<button class="btn ghost" data-resetqr="${id}">Reset QR</button>` : '')}</div>
+        ${ended ? '<span class="badge bad">Lớp đã kết thúc</span> ' : ''}${sess.closed ? '<span class="badge gray">Đã đóng</span> ' : ''}${ended ? '' : qrOpenable(sess) ? `<a class="btn pink" href="#/qr/${id}">Mở QR điểm danh</a>` : (me.role === 'admin' ? `<button class="btn ghost" data-resetqr="${id}">Reset QR</button>` : '')}</div>
         <div class="stat" style="margin-top:12px">
           <div class="chip"><b>${stat['Đúng giờ']}</b>Đúng giờ</div><div class="chip"><b>${stat['Muộn']}</b>Muộn</div>
-          <div class="chip"><b>${stat['Vắng']}</b>Vắng</div><div class="chip"><b>${roster.length}</b>Tổng</div></div></div>
+          <div class="chip"><b>${stat['Vắng']}</b>Vắng</div><div class="chip"><b>${roster.length}</b>Tổng</div><div class="chip"><b>${att.filter((x) => x.out_of_area === true).length}</b>Ngoài khu vực</div></div></div>
       <div class="card"><div class="tbl-wrap"><table>
-        <tr><th>Mã</th><th>Họ tên</th><th>Chức danh</th><th>Trạng thái</th><th>Giờ điểm danh</th><th></th></tr>
+        <tr><th>Mã</th><th>Họ tên</th><th>Chức danh</th><th>Trạng thái</th><th>Giờ điểm danh</th><th>Vị trí</th><th></th></tr>
         ${rows.map(({ r, a, st }) => `<tr>
           <td>${esc(r.student_code)}</td><td>${esc(r.students?.full_name)}</td><td>${esc(r.students?.title)}</td>
           <td><span class="badge ${badge(st)}">${esc(st)}</span></td><td>${a ? esc(fmtTime(a.checked_at)) : ''}</td>
-          <td class="act">${a ? `<button class="btn sm danger" data-undo="${a.id}">Hủy</button>`
+          <td>${locBadge(a)}</td>
+          <td class="act">${ended ? '' : a ? `<button class="btn sm danger" data-undo="${a.id}">Hủy</button>`
             : `<button class="btn sm ghost" data-manual="${esc(r.student_code)}" data-name="${esc(r.students?.full_name)}">Điểm danh tay</button>`}</td></tr>`).join('')}
       </table></div></div>`;
     bindResetQR(el);
@@ -1304,7 +1378,7 @@
     if (_exl) return _exl;
     _exl = new Promise((ok, no) => {
       const sc = document.createElement('script');
-      sc.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+      sc.src = 'vendor/exceljs-4.4.0.min.js';
       sc.onload = ok;
       sc.onerror = () => { _exl = null; no(new Error('Không tải được thư viện xuất Excel. Kiểm tra mạng rồi thử lại')); };
       document.head.appendChild(sc);
@@ -1502,6 +1576,7 @@
             'Ngày học': fmtDate(s.session_date), 'Ca': s.shift ? SHIFT_LABEL[s.shift] : '', 'Mã HV': st.code, 'Họ tên': st.full_name,
             'Chức danh': st.title || '', 'Trạng thái': status,
             'Giờ điểm danh': a ? fmtTime(a.checked_at) : '', 'Hình thức': a ? (a.source === 'manual' ? 'Giảng viên điểm danh' : 'QR') : '',
+            'Vị trí': !a || a.source === 'manual' ? '' : a.out_of_area === true ? 'Ngoài khu vực' : a.out_of_area === false ? 'Trong khu vực' : 'Chưa đối chiếu',
           });
         }
       }
@@ -1530,7 +1605,7 @@
           { header: 'Buổi', key: 'Buổi', width: 7, align: 'center' }, { header: 'Nội dung', key: 'Nội dung', width: 28 }, { header: 'Ngày học', key: 'Ngày học', width: 12, align: 'center' },
           { header: 'Ca', key: 'Ca', width: 9, align: 'center' }, { header: 'Mã HV', key: 'Mã HV', width: 13, align: 'center' }, { header: 'Họ và tên', key: 'Họ tên', width: 26 },
           { header: 'Chức danh', key: 'Chức danh', width: 18 }, { header: 'Trạng thái', key: 'Trạng thái', width: 20, color: STATUS_COLOR },
-          { header: 'Giờ điểm danh', key: 'Giờ điểm danh', width: 20, align: 'center' }, { header: 'Hình thức', key: 'Hình thức', width: 20 }] },
+          { header: 'Giờ điểm danh', key: 'Giờ điểm danh', width: 20, align: 'center' }, { header: 'Hình thức', key: 'Hình thức', width: 20 }, { header: 'Vị trí', key: 'Vị trí', width: 16, color: (v) => (v === 'Ngoài khu vực' ? 'FFC0392B' : v === 'Trong khu vực' ? 'FF1B7F4B' : null) }] },
     ]);
     toast('Đã xuất file Excel', 'ok');
   }

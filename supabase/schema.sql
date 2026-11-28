@@ -753,3 +753,8 @@ alter table public.class_sessions add column if not exists qr_reset_until timest
 -- Ham: list_open_classes(), enroll_class(p_class uuid), my_open_sessions(); check_in khong con chan must_change_password.
 
 -- v26: bao cao gio day (admin): ham teaching_hours(p_from date, p_to date), sang=4h, chieu/toi=5h (da ap dung tren DB)
+
+-- v32 (da ap dung tren DB): vi tri diem danh (attendance.lat/lng/acc_m/dist_m/out_of_area, classes.lat/lng/radius_m),
+-- ket thuc lop (classes.ended_at/ended_by, end_class, reopen_class, class_ended, classes_guard), nhat ky sua diem danh (attendance_log),
+-- khoa dang nhap 5 lan/10 phut (login_attempts, login_status, login_fail, login_ok), check_in(p_token,p_device,p_lat,p_lng,p_acc),
+-- thu hoi quyen anon: chi con reset_password_by_code, login_status, login_fail.
