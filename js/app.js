@@ -26,6 +26,10 @@
     CLASS_ENDED: 'Lớp học đã kết thúc, không thể thực hiện thao tác này',
     ONLY_CREATOR_END: 'Chỉ giảng viên tạo lớp hoặc admin mới được kết thúc lớp',
     ONLY_ADMIN_REOPEN: 'Chỉ admin mới mở lại được lớp đã kết thúc',
+    QR_OTHER_OPENER: 'Giảng viên/trợ giảng khác đang mở QR ở vị trí khác nên bạn chưa mở được mã này',
+    NO_TEACHER: 'Buổi này chưa phân công giảng viên hoặc trợ giảng. Hãy chọn người dạy trong trang lớp',
+    INVALID_TA: 'Trợ giảng không hợp lệ. Hãy chọn trợ giảng của lớp trước',
+    STUDENT_NOT_FOUND: 'Không tìm thấy học viên',
   };
   function errMsg(e) {
     const m = (e && e.message) || String(e);
@@ -150,8 +154,13 @@
     student: [['home', 'Trang chủ'], ['scan', 'Điểm danh'], ['history', 'Lịch sử'], ['account', 'Tài khoản']],
     teacher: [['schedule', 'Lịch dạy'], ['classes', 'Lớp học'], ['roster', 'Học viên'], ['reports', 'Báo cáo'], ['account', 'Tài khoản']],
     admin: [['schedule', 'Lịch dạy'], ['classes', 'Lớp học'], ['roster', 'Học viên'], ['reports', 'Báo cáo'], ['types', 'Loại lớp'],
-      ['staff', 'Nhân sự'], ['account', 'Tài khoản']],
+      ['tas', 'Trợ giảng'], ['staff', 'Nhân sự'], ['account', 'Tài khoản']],
   };
+  // Học viên được nâng lên trợ giảng: có thêm tab Lịch dạy
+  function tabsOf() {
+    const t = TABS[me.role];
+    return me.role === 'student' && me.is_ta ? t.slice(0, 3).concat([['schedule', 'Lịch dạy']], t.slice(3)) : t;
+  }
   const SUBROUTES = { class: 'classes', session: 'classes' };
 
   function nav(path) { location.hash = '#/' + path; }
@@ -187,8 +196,13 @@
       return;
     }
     me = data;
+    me.is_ta = false;
+    if (me.role === 'student' && me.student_code) {
+      const { data: t } = await db.from('teaching_assistants').select('student_code').eq('student_code', me.student_code).maybeSingle();
+      me.is_ta = !!t;
+    }
     if (me.must_change_password && !skipPw) { viewForceChange(); return; }
-    if (!location.hash || location.hash === '#') nav(TABS[me.role][0][0]); else render();
+    if (!location.hash || location.hash === '#') nav(tabsOf()[0][0]); else render();
     if (me.role === 'student') checkReminder();
   }
 
@@ -252,6 +266,7 @@
     classes: ['教室', 'Lớp học', 'Quản lý lớp, buổi học và điểm danh', 'Tea-House-Image.webp', 'center bottom'],
     roster: ['学生', 'Học viên', 'Danh sách học viên và các lớp đã tham gia', '390d3d809a7cb45ac603107d5c810a7294519656.webp', 'center'],
     reports: ['報告', 'Báo cáo', 'Xuất báo cáo điểm danh theo lớp', 'room-poster.webp', 'center 45%'],
+    tas: ['助手', 'Trợ giảng', 'Nâng học viên lên trợ giảng, gỡ trợ giảng', 'c9e9b35046980a9f83bf5618ab3f357477d20263.webp', 'center'],
     staff: ['職員', 'Nhân sự', 'Giảng viên và quản trị viên', 'c9e9b35046980a9f83bf5618ab3f357477d20263.webp', 'center'],
     scan: ['出席', 'Điểm danh', 'Quét mã QR của giảng viên để điểm danh', 'room-poster.webp', 'center 60%'],
     history: ['履歴', 'Lịch sử điểm danh', 'Các buổi bạn đã tham gia', '89a85df788bb142a6104330626a97798db15c1d0.webp', 'center'],
@@ -267,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-38';
+  const APP_VERSION = '2026.11.28-39';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -424,7 +439,7 @@
         </div>
       </div>`;
     $('#out').onclick = () => db.auth.signOut();
-    $('#later').onclick = () => { skipPw = true; location.hash = '#/' + TABS[me.role][0][0]; enter(); };
+    $('#later').onclick = () => { skipPw = true; location.hash = '#/' + tabsOf()[0][0]; enter(); };
     $('#f').onsubmit = async (e) => {
       e.preventDefault();
       const msg = $('#msg'); msg.className = 'form-msg'; msg.textContent = '';
@@ -448,10 +463,10 @@
     runCleanups();
     const seq = ++renderSeq;
     const parts = (location.hash.replace(/^#\/?/, '') || '').split('/');
-    let route = parts[0] || TABS[me.role][0][0];
+    let route = parts[0] || tabsOf()[0][0];
     const param = parts[1];
-    const allowed = TABS[me.role].map((t) => t[0]).concat(me.role === 'student' ? [] : ['class', 'session', 'qr']);
-    if (!allowed.includes(route)) { nav(TABS[me.role][0][0]); return; }
+    const allowed = tabsOf().map((t) => t[0]).concat(me.role === 'student' ? (me.is_ta ? ['qr'] : []) : ['class', 'session', 'qr']);
+    if (!allowed.includes(route)) { nav(tabsOf()[0][0]); return; }
 
     if (route === 'qr') {
       viewQR(param, () => seq !== renderSeq).catch((e) => { console.error(e); toast(errMsg(e), 'err'); });
@@ -463,10 +478,10 @@
       <div class="topbar">
         <div class="brand">${logoHtml(26)}</div>
         <div class="who"><span class="name">${esc(me.full_name || me.email)}</span>
-          <span class="badge">${ROLE_LABEL[me.role]}</span>
+          <span class="badge">${ROLE_LABEL[me.role]}${me.is_ta ? ' · Trợ giảng' : ''}</span>
           <button class="btn ghost sm" id="logout">Thoát</button></div>
       </div>
-      <div class="tabs">${TABS[me.role].map(([k, l]) =>
+      <div class="tabs">${tabsOf().map(([k, l]) =>
         `<a href="#/${k}" class="${k === tabKey ? 'on' : ''}">${l}</a>`).join('')}</div>
       ${pageHero(route)}
       <main id="main"></main>
@@ -476,7 +491,7 @@
     const views = {
       home: viewHome, scan: viewScan, history: viewHistory, account: viewAccount,
       classes: viewClasses, schedule: viewSchedule, class: viewClass, session: viewSession,
-      roster: viewRoster, reports: viewReports, types: viewTypes, staff: viewStaff,
+      roster: viewRoster, reports: viewReports, types: viewTypes, staff: viewStaff, tas: viewTAs,
     };
     Promise.resolve(views[route](el, param)).catch((e) => {
       console.error(e);
@@ -927,6 +942,12 @@
     const maxAbsent = cls.class_types?.max_absent;
     const absent = {}; roster.forEach((r) => { absent[r.student_code] = absentCount(sessions, r.student_code, attSet); });
     const teachers = await q(db.rpc('list_teachers'));
+    const tas = await q(db.rpc('list_tas')).catch(() => []);
+    // ứng viên trợ giảng: học viên đã được nâng lên trợ giảng + giảng viên (giảng viên có thể là trợ giảng lớp khác)
+    const taCands = tas.map((t) => ({ email: String(t.email).toLowerCase(), label: (t.full_name || t.code) + ' (HV ' + t.code + ')' }))
+      .concat(teachers.map((t) => ({ email: String(t.email).toLowerCase(), label: (t.full_name || t.email) + ' (GV)' })));
+    const taName = (e) => { const c = taCands.find((x) => x.email === String(e || '').toLowerCase()); return c ? c.label : e; };
+    const classTA = cls.ta_email ? String(cls.ta_email).toLowerCase() : '';
     const ended = !!cls.ended_at;
     const canEnd = me.role === 'admin' || cls.created_by === me.id;
     const warned = maxAbsent == null ? [] : roster.filter((r) => absent[r.student_code] > maxAbsent);
@@ -947,6 +968,12 @@
           <div class="row"><button class="btn ghost sm" id="setgeo" type="button">Đặt vị trí lớp = vị trí hiện tại của tôi</button>
             <span class="small">Bán kính <input id="rad" type="number" min="30" max="2000" value="${cls.radius_m || 200}" style="width:80px;display:inline-block"> m</span></div>
           <div class="small muted" id="geost">${cls.lat != null ? 'Đã đặt vị trí lớp (' + cls.lat.toFixed(5) + ', ' + cls.lng.toFixed(5) + ')' : 'Chưa đặt vị trí lớp: hệ thống chỉ ghi vị trí học viên, chưa so sánh.'}</div></div>` : ''}
+        <div style="margin-top:10px"><label>Trợ giảng của lớp <span class="muted small">(mỗi lớp 1 người)</span></label>
+          ${canEnd && !ended ? `<div class="row"><select id="clsta" style="flex:1 1 220px;min-width:0"><option value="">(Chưa có trợ giảng)</option>
+            ${taCands.map((c) => `<option value="${esc(c.email)}"${c.email === classTA ? ' selected' : ''}>${esc(c.label)}</option>`).join('')}</select>
+            <button class="btn ghost sm" id="taall" type="button">Gán cho tất cả buổi chưa mở</button></div>
+            <div class="small muted">Chọn trợ giảng của lớp rồi chọn buổi nào có trợ giảng ở danh sách buổi học bên dưới.</div>`
+            : `<div>${classTA ? esc(taName(classTA)) : '<span class="muted">Chưa có trợ giảng</span>'}</div>`}</div>
         <div class="btnrow"><button class="btn ghost" id="exp">Xuất Excel</button>
           ${canEnd && !ended ? '<button class="btn ghost" id="endcls">Kết thúc lớp</button>' : ''}
           <button class="btn ghost" id="add">+ Thêm học viên</button>
@@ -957,13 +984,16 @@
         <div class="small">${warned.map((r) => `<b>${esc(r.students?.full_name || r.student_code)}</b> (${esc(r.student_code)}): vắng ${absent[r.student_code]} buổi`).join('<br>')}</div></div>` : ''}
       <div class="card"><h3>Các buổi học</h3>
         <div class="small muted">Muốn điểm danh tay hoặc hủy điểm danh: bấm <b>Chi tiết</b> ở buổi tương ứng.</div>
-        <div class="srow shead"><div>Buổi học</div><div>Ngày học</div><div>Giảng viên dạy</div><div>Có mặt / thao tác</div></div>
+        <div class="srow shead"><div>Buổi học</div><div>Ngày học</div><div>Giảng viên dạy</div><div>Trợ giảng</div><div>Có mặt / thao tác</div></div>
         ${sessions.map((s) => `<div class="srow">
           <div class="s-main"><b>Buổi ${s.session_no}${s.shift ? ' · ' + SHIFT_LABEL[s.shift] : ''}</b>
             ${s.closed ? '<span class="badge gray">Đã đóng</span>' : s.opened_at ? '<span class="badge ok">Đã mở</span>' : '<span class="badge warn">Chưa mở</span>'}
+            ${!s.teacher_email && !s.ta_email ? '<span class="badge bad" title="Buổi cần có giảng viên hoặc trợ giảng">Chưa phân công</span>' : ''}
             <div class="small muted s-ct">${esc(s.content || '')}</div></div>
           <div><input type="date" value="${s.session_date || ''}" data-date="${s.id}"></div>
           <div><select data-teacher="${s.id}"><option value="">(Chưa gán)</option>${teachers.map((t) => `<option value="${esc(t.email)}"${t.email === String(s.teacher_email || '').toLowerCase() ? ' selected' : ''}>${esc(t.full_name || t.email)}${t.has_account ? '' : ' (chưa tạo TK)'}</option>`).join('')}</select></div>
+          <div><select data-ta="${s.id}"${classTA && !ended ? '' : ' disabled'}><option value="">${classTA ? '(Không có trợ giảng)' : '(Lớp chưa có trợ giảng)'}</option>
+            ${classTA ? `<option value="${esc(classTA)}"${String(s.ta_email || '').toLowerCase() === classTA ? ' selected' : ''}>${esc(taName(classTA))}</option>` : ''}</select></div>
           <div class="s-act"><span class="small"><b>${perSession[s.id] || 0}/${total}</b></span>
             ${ended ? '' : qrButtons(s, true)} <a class="btn sm" href="#/session/${s.id}">Chi tiết</a></div></div>`).join('')}
       </div>
@@ -1034,6 +1064,16 @@
     };
     $$('[data-date]', el).forEach((i) => { i.onchange = () => busy(null, async () => {
       await q(db.from('class_sessions').update({ session_date: i.value || null }).eq('id', i.dataset.date)); toast('Đã lưu ngày học', 'ok'); }); });
+    $$('[data-ta]', el).forEach((sel) => { sel.onchange = () => busy(null, async () => {
+      await q(db.from('class_sessions').update({ ta_email: sel.value || null }).eq('id', sel.dataset.ta));
+      toast(sel.value ? 'Đã gán trợ giảng cho buổi' : 'Đã bỏ trợ giảng khỏi buổi', 'ok'); render(); }); });
+    if ($('#clsta')) $('#clsta').onchange = () => busy(null, async () => {
+      await q(db.from('classes').update({ ta_email: $('#clsta').value || null }).eq('id', id));
+      toast($('#clsta').value ? 'Đã đặt trợ giảng của lớp. Hãy chọn buổi có trợ giảng bên dưới' : 'Đã bỏ trợ giảng của lớp', 'ok'); render(); });
+    if ($('#taall')) $('#taall').onclick = (e) => busy(e.target, async () => {
+      if (!$('#clsta').value) throw new Error('Hãy chọn trợ giảng của lớp trước');
+      await q(db.from('class_sessions').update({ ta_email: $('#clsta').value }).eq('class_id', id).is('opened_at', null));
+      toast('Đã gán trợ giảng cho các buổi chưa mở', 'ok'); render(); });
     $$('[data-teacher]', el).forEach((sel) => { sel.onchange = () => busy(null, async () => {
       await q(db.from('class_sessions').update({ teacher_email: sel.value || null }).eq('id', sel.dataset.teacher)); toast('Đã đổi giảng viên', 'ok'); }); });
     $$('[data-close]', el).forEach((b) => { b.onclick = () => busy(b, async () => {
@@ -1245,19 +1285,19 @@
   }
 
   async function viewQR(id, isStale) {
-    const sess = await q(db.from('class_sessions').select('id, session_no, content, closed, classes(id, name)').eq('id', id).single())
-      .catch((e) => { toast(errMsg(e), 'err'); nav('classes'); return null; });
+    const sess = await q(db.rpc('qr_info', { p_session: id }))
+      .catch((e) => { toast(errMsg(e), 'err'); nav(me.role === 'student' ? 'schedule' : 'classes'); return null; });
     if (!sess || isStale()) return;
-    const total = (await q(db.from('class_students').select('student_code', { count: 'exact', head: false }).eq('class_id', sess.classes.id))).length;
-    if (isStale()) return;
+    const total = sess.total;
+    const backHref = me.role === 'student' ? '#/schedule' : '#/class/' + sess.class_id;
     const size = Math.floor(Math.min(window.innerWidth * 0.8, window.innerHeight * 0.5, 420));
 
     app.innerHTML = `
       <div class="qr-screen">
         <div class="row between" style="width:100%;max-width:700px">
-          <a class="btn ghost sm" href="#/class/${sess.classes.id}">&larr; Thoát</a>
+          <a class="btn ghost sm" href="${backHref}">&larr; Thoát</a>
           <button class="btn sm danger" id="closeSess">Đóng điểm danh</button></div>
-        <h2>${esc(sess.classes.name)}<br><small style="font-weight:400">Buổi ${sess.session_no}: ${esc(sess.content || '')}</small></h2>
+        <h2>${esc(sess.class_name)}<br><small style="font-weight:400">Buổi ${sess.session_no}: ${esc(sess.content || '')}</small></h2>
         <div class="qr-box"><canvas id="cv"></canvas></div>
         <div class="bar"><i id="bar"></i></div>
         <div class="muted small" style="color:#cfd6ee" id="hint">Mã tự đổi mỗi 10 giây</div>
@@ -1287,9 +1327,18 @@
     }
     window.addEventListener('pagehide', onHide);
 
+    // Vị trí người mở QR: nếu giảng viên và trợ giảng cùng mở thì phải cách nhau tối đa 200 m
+    let pos = null, posAt = 0;
+    const refreshPos = () => new Promise((ok) => {
+      posAt = Date.now();
+      if (!navigator.geolocation) { ok(null); return; }
+      navigator.geolocation.getCurrentPosition((p) => { pos = { lat: p.coords.latitude, lng: p.coords.longitude }; ok(pos); }, () => ok(null),
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 });
+    });
     async function loadToken() {
       if (stopped) return;
-      const { data, error } = await db.rpc('get_qr_token', { p_session: id, p_reopen: reopened });
+      if (!pos || Date.now() - posAt > 60000) await refreshPos();
+      const { data, error } = await db.rpc('get_qr_token', { p_session: id, p_reopen: reopened, p_lat: pos ? pos.lat : null, p_lng: pos ? pos.lng : null });
       if (data && data.error === 'QR_EXPIRED') {
         timers.forEach(clearInterval); timers.length = 0;
         const box = $('.qr-box'); if (box) box.style.opacity = '.15';
@@ -1310,12 +1359,11 @@
     }
     async function loadCount() {
       if (stopped) return;
-      const rows = await q(db.from('attendance').select('student_name, checked_at, source').eq('session_id', id)
-        .order('checked_at', { ascending: false }).limit(300)).catch(() => null);
-      if (!rows) return;
-      $('#cnt').textContent = rows.length;
-      $('#list').innerHTML = rows.slice(0, 8).map((r) => `<div><span>${esc(r.student_name)}</span>
-        <span class="muted">${esc(new Date(r.checked_at).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }))}</span></div>`).join('');
+      const r = await q(db.rpc('qr_info', { p_session: id })).catch(() => null);
+      if (!r) return;
+      $('#cnt').textContent = r.count;
+      $('#list').innerHTML = (r.recent || []).map((x) => `<div><span>${esc(x.student_name)}</span>
+        <span class="muted">${esc(new Date(x.checked_at).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }))}</span></div>`).join('');
     }
     function onVis() { if (!document.hidden) loadToken(); }
     document.addEventListener('visibilitychange', onVis);
@@ -1325,7 +1373,7 @@
       busy(e.target, async () => {
         explicitClosed = true;
         await q(db.rpc('close_qr', { p_session: id }));
-        nav('session/' + id);
+        nav(me.role === 'student' ? 'schedule' : 'session/' + id);
       });
     };
     await loadToken(); await loadCount();
@@ -1350,10 +1398,14 @@
       const gridStart = new Date(first); gridStart.setDate(1 - offset);
       const weeks = Math.ceil((offset + last.getDate()) / 7);
       const gridEnd = new Date(gridStart); gridEnd.setDate(gridStart.getDate() + weeks * 7 - 1);
-      const rows = await q(db.from('class_sessions')
+      const rows = me.role === 'student' ? [] : await q(db.from('class_sessions')
         .select('id, session_no, content, session_date, shift, closed, opened_at, qr_reset_until, classes(id, name)')
         .eq('teacher_email', String(me.email || '').toLowerCase()).gte('session_date', ymd(gridStart)).lte('session_date', ymd(gridEnd))
         .order('session_date').order('session_no'));
+      // buổi được phân công làm trợ giảng (kể cả giảng viên làm trợ giảng lớp khác)
+      const taRows = await q(db.rpc('my_ta_sessions', { p_from: ymd(gridStart), p_to: ymd(gridEnd) })).catch(() => []);
+      taRows.forEach((t) => { if (!rows.some((r) => r.id === t.id)) rows.push({ ...t, classes: { id: t.class_id, name: t.class_name }, as_ta: true }); });
+      rows.sort((a, b) => String(a.session_date).localeCompare(String(b.session_date)) || a.session_no - b.session_no);
       const by = {}; rows.forEach((r) => { (by[r.session_date] = by[r.session_date] || []).push(r); });
 
       let cells = '';
@@ -1378,10 +1430,10 @@
         <div class="small muted" style="margin-top:8px"><i class="dot s"></i> Sáng &nbsp; <i class="dot c"></i> Chiều</div></div>
         <div class="card"><h3>${WD[dd.getDay()]}, ${fmtDate(selected)}</h3>
           ${day.length ? day.map((r) => `<div class="sch-item">
-            <div><b>${esc(r.classes?.name)}</b> · Buổi ${r.session_no}${r.shift ? ' · ' + SHIFT_LABEL[r.shift] : ''}
+            <div><b>${esc(r.classes?.name)}</b> · Buổi ${r.session_no}${r.shift ? ' · ' + SHIFT_LABEL[r.shift] : ''}${r.as_ta ? ' <span class="badge">Trợ giảng</span>' : ''}
               <div class="small muted">${esc(r.content || '')}</div></div>
             <div class="btnrow">${r.closed ? '<span class="badge gray">Đã đóng</span>' : ''}${qrOpenable(r) ? `<a class="btn pink sm" href="#/qr/${r.id}">Mở QR điểm danh</a>` : (me.role === 'admin' ? `<button class="btn ghost sm" data-resetqr="${r.id}">Reset QR</button>` : '')}
-              <a class="btn ghost sm" href="#/session/${r.id}">Chi tiết</a></div></div>`).join('')
+              ${r.as_ta ? '' : `<a class="btn ghost sm" href="#/session/${r.id}">Chi tiết</a>`}</div></div>`).join('')
             : '<p class="muted">Không có buổi dạy nào trong ngày này.</p>'}</div>`;
       bindResetQR(el);
       $('#pm').onclick = () => { cur = new Date(cur.getFullYear(), cur.getMonth() - 1, 1); draw(); };
@@ -1865,6 +1917,58 @@
     $$('[data-delmail]', el).forEach((b) => { b.onclick = () => busy(b, async () => {
       await q(db.from('allowed_staff').delete().eq('email', b.dataset.delmail)); render(); }); });
   }
+
+  // ================================================================ QUẢN LÝ TRỢ GIẢNG (admin)
+  async function viewTAs(el) {
+    if (me.role !== 'admin') { el.innerHTML = '<div class="card"><p>Chỉ admin mới quản lý trợ giảng.</p></div>'; return; }
+    el.innerHTML = `<div class="card"><h2>Quản lý trợ giảng</h2>
+        <p class="muted small">Học viên được nâng lên trợ giảng vẫn điểm danh bình thường và có thêm tab <b>Lịch dạy</b>, mở được mã QR ở các buổi được phân công. Mỗi lớp có 1 trợ giảng, chọn trong trang lớp.</p>
+        <label>Thêm trợ giảng: tìm học viên (mã hoặc họ tên)</label>
+        <input id="tq" placeholder="Gõ mã hoặc tên..." autocomplete="off">
+        <div class="pick" id="tl"><div class="small muted" style="padding:10px">Đang tải...</div></div></div>
+      <div class="card"><h3 id="th">Danh sách trợ giảng</h3><div id="tt" class="plist"></div></div>`;
+    const stu = await fetchAll(() => db.from('students').select('code, full_name, title').order('full_name').order('code'));
+    const load = async () => {
+      const tas = await q(db.rpc('list_tas'));
+      const cl = await q(db.from('classes').select('name, ta_email, ended_at').not('ta_email', 'is', null));
+      const isTA = new Set(tas.map((t) => t.code));
+      $('#th').textContent = `Danh sách trợ giảng (${tas.length})`;
+      $('#tt').innerHTML = tas.length ? tas.map((t) => {
+        const mine = cl.filter((c) => String(c.ta_email).toLowerCase() === String(t.email).toLowerCase() && !c.ended_at);
+        return `<div class="pi"><div class="pi-main"><b>${esc(t.full_name)}</b><div class="small muted">${esc(t.code)}${t.title ? ' · ' + esc(t.title) : ''}</div>
+          <div class="pi-st">${mine.length ? mine.map((c) => `<span class="badge">${esc(c.name)}</span>`).join(' ') : '<span class="small muted">Chưa phụ trách lớp nào</span>'}${t.has_account ? '' : '<span class="badge gray">Chưa đăng nhập lần nào</span>'}</div></div>
+          <div class="pi-act"><button class="btn sm danger" data-rmta="${esc(t.code)}">Hạ xuống học viên</button></div></div>`; }).join('')
+        : '<p class="muted">Chưa có trợ giảng nào.</p>';
+      $$('[data-rmta]', el).forEach((b) => { b.onclick = () => {
+        if (!confirm('Hạ trợ giảng này xuống học viên? Họ sẽ bị gỡ khỏi các lớp và các buổi đã được gán.')) return;
+        busy(b, async () => { await q(db.rpc('set_ta', { p_code: b.dataset.rmta, p_on: false })); toast('Đã hạ xuống học viên', 'ok'); load(); }); }; });
+      const draw = () => {
+        const k = norm($('#tq').value);
+        const list = stu.filter((s) => !k || norm(s.code + ' ' + s.full_name).includes(k));
+        const shown = list.slice(0, 40);
+        $('#tl').innerHTML = shown.length ? shown.map((s) => `<div class="pk"><span style="flex:1;min-width:0"><b>${esc(s.full_name)}</b><small>${esc(s.code)}${s.title ? ' · ' + esc(s.title) : ''}</small></span>
+          ${isTA.has(s.code) ? '<span class="badge ok">Đã là trợ giảng</span>' : `<button class="btn sm pink" data-addta="${esc(s.code)}" type="button">Nâng lên trợ giảng</button>`}</div>`).join('')
+          + (list.length > 40 ? `<div class="small muted" style="padding:8px 10px">Còn ${list.length - 40} kết quả, hãy gõ thêm để lọc.</div>` : '')
+          : '<div class="small muted" style="padding:10px">Không tìm thấy học viên.</div>';
+        $$('[data-addta]', el).forEach((b) => { b.onclick = () => busy(b, async () => { await q(db.rpc('set_ta', { p_code: b.dataset.addta, p_on: true })); toast('Đã nâng lên trợ giảng', 'ok'); load(); }); });
+      };
+      $('#tq').oninput = draw; draw();
+    };
+    await load();
+  }
+
+  // Ô ngày hiển thị dạng dd/mm/yyyy (ô chọn ngày gốc của trình duyệt vẫn dùng để chọn, nhưng được ẩn đi)
+  function enhanceDates(root) {
+    $$('input[type="date"]:not(.dn)', root || document).forEach((inp) => {
+      inp.classList.add('dn');
+      const w = document.createElement('span'); w.className = 'dwrap';
+      const t = document.createElement('span'); t.className = 'dtxt';
+      const upd = () => { t.textContent = inp.value ? fmtDate(inp.value) : 'dd/mm/yyyy'; t.classList.toggle('ph', !inp.value); };
+      inp.parentNode.insertBefore(w, inp); w.append(t, inp); upd();
+      inp.addEventListener('input', upd); inp.addEventListener('change', upd);
+    });
+  }
+  new MutationObserver(() => enhanceDates()).observe(document.body, { childList: true, subtree: true });
 
   boot();
 })();

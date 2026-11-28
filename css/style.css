@@ -463,3 +463,14 @@ button.sc:active { transform: scale(.94); }
 @media (max-width: 560px) { .rgrid { grid-template-columns: minmax(0, 1fr); } .ract .btn { width: 100%; } }
 input[type="date"], input[type="month"] { min-height: 42px; background: #fff; text-align: left; }
 input[type="date"]::-webkit-date-and-time-value, input[type="month"]::-webkit-date-and-time-value { text-align: left; }
+
+/* ===== v39: ngày dd/mm/yyyy, trợ giảng ===== */
+.dwrap { position: relative; display: block; width: 100%; max-width: 100%; }
+.dtxt { display: flex; align-items: center; min-height: 42px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: rgba(255,255,255,.95); color: var(--text); }
+.dtxt.ph { color: #9aa0b4; }
+.dtxt::after { content: "\25BE"; margin-left: auto; color: var(--muted); }
+input[type="date"].dn { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; padding: 0; -webkit-appearance: none; appearance: none; }
+.srow.has-ta, .srow { grid-template-columns: minmax(0,1.3fr) minmax(0,128px) minmax(0,1fr) minmax(0,1fr) auto; }
+.srow input[type=date] { padding: 0; }
+.srow .dtxt { min-height: 38px; padding: 6px 8px; font-size: 14px; }
+@media (max-width: 760px) { .srow, .srow.has-ta { grid-template-columns: minmax(0,1fr) minmax(0,1fr); } }

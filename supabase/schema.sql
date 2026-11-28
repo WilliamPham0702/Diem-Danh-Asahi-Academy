@@ -758,3 +758,185 @@ alter table public.class_sessions add column if not exists qr_reset_until timest
 -- ket thuc lop (classes.ended_at/ended_by, end_class, reopen_class, class_ended, classes_guard), nhat ky sua diem danh (attendance_log),
 -- khoa dang nhap 5 lan/10 phut (login_attempts, login_status, login_fail, login_ok), check_in(p_token,p_device,p_lat,p_lng,p_acc),
 -- thu hoi quyen anon: chi con reset_password_by_code, login_status, login_fail.
+-- ===== v38: Tro giang =====
+create table if not exists public.teaching_assistants(
+  student_code text primary key references public.students(code) on delete cascade,
+  added_by uuid, added_at timestamptz not null default now());
+alter table public.teaching_assistants enable row level security;
+drop policy if exists ta_select on public.teaching_assistants;
+create policy ta_select on public.teaching_assistants for select to authenticated
+  using (public.is_staff() or student_code = public.my_student_code());
+revoke all on public.teaching_assistants from anon, authenticated;
+grant select on public.teaching_assistants to authenticated;
+
+alter table public.classes add column if not exists ta_email text;
+alter table public.class_sessions add column if not exists ta_email text;
+
+create table if not exists public.qr_openers(
+  session_id uuid not null references public.class_sessions(id) on delete cascade,
+  user_id uuid not null, lat double precision, lng double precision,
+  seen_at timestamptz not null default now(), active boolean not null default true,
+  primary key (session_id, user_id));
+alter table public.qr_openers enable row level security;
+revoke all on public.qr_openers from anon, authenticated;
+
+create or replace function public.ta_email_of(p_code text) returns text
+language sql stable security definer set search_path = public as $$
+  select coalesce((select lower(email) from public.profiles where student_code = p_code limit 1), lower(p_code) || '@asahilife.com') $$;
+
+create or replace function public.valid_ta_email(e text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select e is null
+      or exists (select 1 from public.allowed_staff a where lower(a.email) = lower(e))
+      or exists (select 1 from public.teaching_assistants t where public.ta_email_of(t.student_code) = lower(e)) $$;
+
+create or replace function public.list_tas() returns table(code text, full_name text, title text, email text, has_account boolean)
+language sql stable security definer set search_path = public as $$
+  select t.student_code, s.full_name, s.title, public.ta_email_of(t.student_code),
+         exists (select 1 from public.profiles p where p.student_code = t.student_code)
+    from public.teaching_assistants t join public.students s on s.code = t.student_code
+   where public.is_staff() order by s.full_name $$;
+
+create or replace function public.set_ta(p_code text, p_on boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare v_email text;
+begin
+  if not coalesce(public.is_admin(), false) then raise exception 'FORBIDDEN'; end if;
+  if not exists (select 1 from public.students where code = p_code) then raise exception 'STUDENT_NOT_FOUND'; end if;
+  if p_on then
+    insert into public.teaching_assistants(student_code, added_by) values (p_code, auth.uid()) on conflict do nothing;
+  else
+    v_email := public.ta_email_of(p_code);
+    delete from public.teaching_assistants where student_code = p_code;
+    update public.class_sessions set ta_email = null where lower(ta_email) = v_email;
+    update public.classes set ta_email = null where lower(ta_email) = v_email;
+  end if;
+end $$;
+
+-- classes: kiem tra tro giang hop le + dong bo cac buoi
+create or replace function public.classes_guard() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.ended_at is distinct from old.ended_at or new.ended_by is distinct from old.ended_by then
+    if new.ended_at is null then
+      if not coalesce(public.is_admin(), false) then raise exception 'ONLY_ADMIN_REOPEN'; end if;
+    else
+      if not (coalesce(public.is_admin(), false) or old.created_by = auth.uid()) then raise exception 'ONLY_CREATOR_END'; end if;
+    end if;
+  end if;
+  if new.created_by is distinct from old.created_by and not coalesce(public.is_admin(), false) then raise exception 'FORBIDDEN'; end if;
+  if new.ta_email is distinct from old.ta_email then
+    new.ta_email := nullif(lower(btrim(new.ta_email)), '');
+    if auth.uid() is not null and not public.can_manage_class(old.id) then raise exception 'FORBIDDEN'; end if;
+    if not public.valid_ta_email(new.ta_email) then raise exception 'INVALID_TA'; end if;
+  end if;
+  return new;
+end $$;
+
+create or replace function public.classes_ta_sync() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  update public.class_sessions set ta_email = new.ta_email
+   where class_id = new.id and ta_email is not null and lower(ta_email) is distinct from lower(coalesce(new.ta_email, ''));
+  return null;
+end $$;
+drop trigger if exists classes_ta_sync_trg on public.classes;
+create trigger classes_ta_sync_trg after update of ta_email on public.classes
+  for each row when (old.ta_email is distinct from new.ta_email) execute function public.classes_ta_sync();
+
+create or replace function public.guard_session_update() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if not coalesce(public.is_admin(), false) and auth.uid() is not null then
+    if new.qr_reset_until is distinct from old.qr_reset_until then new.qr_reset_until := old.qr_reset_until; end if;
+    if old.opened_at is not null and new.session_date is distinct from old.session_date then new.session_date := old.session_date; end if;
+  end if;
+  if new.ta_email is distinct from old.ta_email then
+    new.ta_email := nullif(lower(btrim(new.ta_email)), '');
+    if auth.uid() is not null and new.ta_email is not null
+       and new.ta_email is distinct from (select lower(c.ta_email) from public.classes c where c.id = new.class_id) then
+      raise exception 'INVALID_TA';
+    end if;
+  end if;
+  return new;
+end $$;
+
+create or replace function public.can_open_session(p_session uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.class_sessions s where s.id = p_session
+    and (public.can_access_class(s.class_id)
+         or (s.ta_email is not null and lower(s.ta_email) = public.my_email()
+             and (public.is_staff() or exists (select 1 from public.teaching_assistants t where t.student_code = public.my_student_code()))))) $$;
+
+drop function if exists public.get_qr_token(uuid, boolean);
+create or replace function public.get_qr_token(p_session uuid, p_reopen boolean default false, p_lat double precision default null, p_lng double precision default null)
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
+declare cs record; w record; d timestamptz; v_reset boolean; o record; v_dist double precision;
+begin
+  select s.id, s.class_id, s.session_no, s.content, s.session_date, s.shift, s.opened_at, s.qr_reset_until, s.teacher_email, s.ta_email, c.name as class_name
+    into cs from public.class_sessions s join public.classes c on c.id = s.class_id where s.id = p_session;
+  if not found then raise exception 'SESSION_NOT_FOUND'; end if;
+  if not public.can_open_session(p_session) then raise exception 'FORBIDDEN'; end if;
+  if public.class_ended(cs.class_id) then raise exception 'CLASS_ENDED'; end if;
+  if cs.teacher_email is null and cs.ta_email is null then raise exception 'NO_TEACHER'; end if;
+  v_reset := cs.qr_reset_until is not null and now() <= cs.qr_reset_until;
+  select * into w from public.qr_window(cs.session_date, cs.shift);
+  d := public.qr_deadline(cs.session_date, cs.shift);
+  if not v_reset then
+    if w.w_start is null or now() > w.w_end then raise exception 'OUT_OF_SESSION'; end if;
+    if now() < w.w_start then raise exception 'NOT_YET'; end if;
+    if d is not null and now() > d and not coalesce(p_reopen, false) then return jsonb_build_object('error', 'QR_EXPIRED'); end if;
+  end if;
+  -- nguoi khac dang mo QR cua buoi nay: chi cho mo them neu cung vi tri (<= 200 m)
+  for o in select * from public.qr_openers where session_id = p_session and user_id <> auth.uid() and active and seen_at > now() - interval '40 seconds' loop
+    if p_lat is null or p_lng is null or o.lat is null or o.lng is null then raise exception 'QR_OTHER_OPENER'; end if;
+    v_dist := 6371000 * 2 * asin(least(1, sqrt(power(sin(radians(p_lat - o.lat) / 2), 2)
+              + cos(radians(o.lat)) * cos(radians(p_lat)) * power(sin(radians(p_lng - o.lng) / 2), 2))));
+    if v_dist > 200 then raise exception 'QR_OTHER_OPENER'; end if;
+  end loop;
+  insert into public.qr_openers(session_id, user_id, lat, lng, seen_at, active) values (p_session, auth.uid(), p_lat, p_lng, now(), true)
+    on conflict (session_id, user_id) do update set lat = coalesce(excluded.lat, public.qr_openers.lat), lng = coalesce(excluded.lng, public.qr_openers.lng), seen_at = now(), active = true;
+  update public.class_sessions set closed = false, opened_at = coalesce(opened_at, now()) where id = p_session;
+  return jsonb_build_object('token', public.make_token(p_session, extract(epoch from now())::bigint), 'class_name', cs.class_name, 'session_no', cs.session_no, 'content', cs.content);
+end $$;
+
+create or replace function public.close_qr(p_session uuid) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.can_open_session(p_session) then raise exception 'FORBIDDEN'; end if;
+  update public.qr_openers set active = false where session_id = p_session and user_id = auth.uid();
+  if not exists (select 1 from public.qr_openers where session_id = p_session and active and seen_at > now() - interval '40 seconds') then
+    update public.class_sessions set closed = true where id = p_session and opened_at is not null;
+  end if;
+end $$;
+
+create or replace function public.qr_info(p_session uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare r jsonb;
+begin
+  if not public.can_open_session(p_session) then raise exception 'FORBIDDEN'; end if;
+  select jsonb_build_object('id', s.id, 'session_no', s.session_no, 'content', s.content, 'closed', s.closed, 'class_id', c.id, 'class_name', c.name,
+    'total', (select count(*) from public.class_students cs where cs.class_id = c.id),
+    'count', (select count(*) from public.attendance a where a.session_id = s.id),
+    'recent', coalesce((select jsonb_agg(jsonb_build_object('student_name', x.student_name, 'checked_at', x.checked_at))
+                          from (select student_name, checked_at from public.attendance where session_id = s.id order by checked_at desc limit 8) x), '[]'::jsonb))
+    into r from public.class_sessions s join public.classes c on c.id = s.class_id where s.id = p_session;
+  return r;
+end $$;
+
+create or replace function public.my_ta_sessions(p_from date, p_to date) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id', s.id, 'session_no', s.session_no, 'content', s.content, 'session_date', s.session_date,
+      'shift', s.shift, 'closed', s.closed, 'opened_at', s.opened_at, 'qr_reset_until', s.qr_reset_until, 'class_id', c.id, 'class_name', c.name)
+      order by s.session_date, s.session_no), '[]'::jsonb)
+    from public.class_sessions s join public.classes c on c.id = s.class_id
+   where s.ta_email is not null and lower(s.ta_email) = public.my_email() and c.ended_at is null
+     and s.session_date between p_from and p_to
+     and (public.is_staff() or exists (select 1 from public.teaching_assistants t where t.student_code = public.my_student_code())) $$;
+
+-- phan quyen ham
+revoke all on function public.ta_email_of(text), public.valid_ta_email(text), public.can_open_session(uuid), public.classes_ta_sync() from public, anon, authenticated;
+revoke all on function public.list_tas(), public.set_ta(text, boolean), public.get_qr_token(uuid, boolean, double precision, double precision),
+  public.close_qr(uuid), public.qr_info(uuid), public.my_ta_sessions(date, date) from public, anon;
+grant execute on function public.list_tas(), public.set_ta(text, boolean), public.get_qr_token(uuid, boolean, double precision, double precision),
+  public.close_qr(uuid), public.qr_info(uuid), public.my_ta_sessions(date, date) to authenticated;
