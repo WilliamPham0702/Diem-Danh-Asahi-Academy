@@ -1120,3 +1120,24 @@ begin
     update public.class_sessions cs set node_id = n from public.classes c where cs.class_id = c.id and c.class_type_id = t and cs.session_no = 8 + i;
   end loop;
 end $$;
+
+-- v50: tìm học viên theo tên/mã phía server (không tải cả kho)
+create extension if not exists unaccent with schema extensions;
+create or replace function public.search_students(p_q text, p_class uuid default null)
+returns table(code text, full_name text, title text, in_class boolean)
+language plpgsql stable security definer set search_path = public, extensions as $$
+declare k text := lower(extensions.unaccent(trim(coalesce(p_q,''))));
+begin
+  if not public.is_staff() then raise exception 'FORBIDDEN'; end if;
+  if length(k) < 2 then return; end if;
+  k := replace(replace(replace(k,'\','\\'),'%','\%'),'_','\_');
+  return query
+    select s.code, s.full_name, s.title,
+      (p_class is not null and exists (select 1 from class_students cs where cs.class_id = p_class and cs.student_code = s.code))
+    from students s
+    where lower(extensions.unaccent(s.full_name)) like '%'||k||'%' or s.code like '%'||k||'%'
+    order by s.full_name, s.code
+    limit 20;
+end $$;
+revoke all on function public.search_students(text, uuid) from public, anon;
+grant execute on function public.search_students(text, uuid) to authenticated;

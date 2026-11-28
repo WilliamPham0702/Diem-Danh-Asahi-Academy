@@ -282,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-49';
+  const APP_VERSION = '2026.11.28-50';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -954,8 +954,6 @@
         <label style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="ce" style="width:auto"> Mở đăng ký cho học viên tự đăng ký lớp này</label>
         <label>Danh sách học viên (file Excel)</label><input id="cx" type="file" accept=".xlsx,.xls,.csv">
         <div class="small muted">Cột: Mã học viên, Họ và tên, Chức danh. Cột Mã học viên nên để định dạng Text để giữ số 0 ở đầu. <a href="#" id="tpl">Tải file mẫu</a></div>
-        <label>Hoặc nhập thêm mã học viên đã có trong hệ thống</label>
-        <textarea id="cc" placeholder="000000089, 000000090, ..."></textarea>
         <div class="row" style="margin-top:14px"><button class="btn pink" id="ok">Tạo lớp</button>
           <button type="button" class="btn ghost" id="cancel">Hủy</button></div>
       </form>`, (m, close) => {
@@ -982,7 +980,7 @@
       $('#cf', m).onsubmit = (e) => {
         e.preventDefault();
         busy($('#ok', m), async () => {
-          let codes = parseCodes($('#cc', m).value);
+          let codes = [];
           const f = $('#cx', m).files[0];
           if (f) { const r = await importStudents(f); codes = codes.concat(r.codes); if (r.skipped) toast(`Bỏ qua ${r.skipped} dòng thiếu thông tin`); }
           codes = Array.from(new Set(codes));
@@ -1187,63 +1185,60 @@
   }
 
   function openAddStudents(classId) {
-    const sel = new Set(); let all = []; let inClass = new Set();
+    const sel = new Map(); // code -> họ tên
     modal(`<h2>Thêm học viên vào lớp</h2>
       <form id="af">
-        <div class="small muted">Chọn học viên học phần nào của khoá trước, rồi chọn học viên hoặc đính kèm file.</div>
         <div id="npbox"></div>
-        <label>Tìm học viên trong hệ thống (mã hoặc họ tên)</label>
-        <input id="as" placeholder="Gõ mã hoặc tên rồi chọn..." autocomplete="off">
-        <div class="chips" id="achips"></div>
-        <div class="pick" id="alist"><div class="small muted" style="padding:10px">Đang tải danh sách...</div></div>
-        <details class="more"><summary>Hoặc thêm bằng file Excel / dán danh sách mã</summary>
-          <label>File Excel danh sách</label><input id="ax" type="file" accept=".xlsx,.xls,.csv">
-          <div class="small muted"><a href="#" id="tpl">Tải file mẫu</a></div>
-          <label>Mã học viên (cách nhau bằng dấu phẩy hoặc xuống dòng)</label>
-          <textarea id="ac" placeholder="000000089, 000000090, ..."></textarea></details>
+        <div class="cset" style="margin-top:10px"><b>1. Up từ file Excel</b> <span class="badge ok">Ưu tiên</span>
+          <input id="ax" type="file" accept=".xlsx,.xls,.csv" style="margin-top:6px">
+          <div class="small muted"><a href="#" id="tpl">Tải file mẫu</a></div></div>
+        <div class="cset" style="margin-top:10px"><b>2. Hoặc tìm trong kho học viên</b>
+          <input id="as" placeholder="Gõ tên hoặc mã (từ 2 ký tự)..." autocomplete="off" style="margin-top:6px">
+          <div class="chips" id="achips"></div>
+          <div class="pick" id="alist" style="display:none"></div></div>
         <div class="row" style="margin-top:14px"><button class="btn pink" id="ok">Thêm</button>
           <button type="button" class="btn ghost" id="cancel">Hủy</button></div>
       </form>`, (m, close) => {
       const drawChips = () => {
-        $('#achips', m).innerHTML = Array.from(sel).map((c) => { const st = all.find((x) => x.code === c); return `<span class="badge ok" data-x="${esc(c)}" title="Bỏ chọn">${esc(st ? st.full_name : c)} ✕</span>`; }).join('');
-        $$('[data-x]', m).forEach((b) => { b.onclick = () => { sel.delete(b.dataset.x); drawChips(); draw(); }; });
+        $('#achips', m).innerHTML = Array.from(sel).map(([c, n]) => `<span class="badge ok" data-x="${esc(c)}" title="Bỏ chọn">${esc(n)} ✕</span>`).join('');
+        $$('[data-x]', m).forEach((b) => { b.onclick = () => { sel.delete(b.dataset.x); drawChips(); doSearch(); }; });
         $('#ok', m).textContent = sel.size ? `Thêm (${sel.size})` : 'Thêm';
       };
-      const draw = () => {
-        const k = norm($('#as', m).value);
-        const list = all.filter((s) => !k || norm(s.code + ' ' + s.full_name).includes(k));
-        const shown = list.slice(0, 40);
-        $('#alist', m).innerHTML = shown.length ? shown.map((s) => { const dis = inClass.has(s.code);
-          return `<label class="pk${dis ? ' dis' : ''}"><input type="checkbox" data-c="${esc(s.code)}"${dis ? ' disabled' : ''}${sel.has(s.code) ? ' checked' : ''}>
-            <span><b>${esc(s.full_name)}</b>${dis ? ' <span class="badge gray">Đã trong lớp</span>' : ''}<small>${esc(s.code)}${s.title ? ' · ' + esc(s.title) : ''}</small></span></label>`; }).join('')
-          + (list.length > 40 ? `<div class="small muted" style="padding:8px 10px">Còn ${list.length - 40} kết quả nữa, hãy gõ thêm để lọc.</div>` : '')
-          : '<div class="small muted" style="padding:10px">Không tìm thấy học viên nào.</div>';
-        $$('[data-c]', m).forEach((cb) => { cb.onchange = () => { if (cb.checked) sel.add(cb.dataset.c); else sel.delete(cb.dataset.c); drawChips(); }; });
+      let seq = 0, timer = null;
+      const doSearch = async () => {
+        const v = $('#as', m).value.trim(); const box = $('#alist', m);
+        if (v.length < 2) { box.style.display = 'none'; box.innerHTML = ''; return; }
+        const my = ++seq; box.style.display = '';
+        box.innerHTML = '<div class="small muted" style="padding:10px">Đang tìm...</div>';
+        try {
+          const list = await q(db.rpc('search_students', { p_q: v, p_class: classId }));
+          if (my !== seq) return;
+          box.innerHTML = list.length ? list.map((s) => `<label class="pk"><input type="checkbox" data-c="${esc(s.code)}" data-n="${esc(s.full_name)}"${sel.has(s.code) ? ' checked' : ''}>
+            <span><b>${esc(s.full_name)}</b>${s.in_class ? ' <span class="badge gray">Đã trong lớp</span>' : ''}<small>${esc(s.code)}${s.title ? ' · ' + esc(s.title) : ''}</small></span></label>`).join('')
+            + (list.length >= 20 ? '<div class="small muted" style="padding:8px 10px">Hiển thị 20 kết quả đầu, gõ thêm để lọc.</div>' : '')
+            : '<div class="small muted" style="padding:10px">Không tìm thấy học viên nào.</div>';
+          $$('[data-c]', box).forEach((cb) => { cb.onchange = () => { if (cb.checked) sel.set(cb.dataset.c, cb.dataset.n); else sel.delete(cb.dataset.c); drawChips(); }; });
+        } catch (e) { if (my === seq) box.innerHTML = `<div class="small" style="padding:10px;color:var(--bad)">${esc(errMsg(e))}</div>`; }
       };
       q(db.from('classes').select('class_type_id, class_types(name)').eq('id', classId).single()).then(async (c) => {
         const ns = (await loadNodes()).filter((n) => n.class_type_id === c.class_type_id);
         const ss = await q(db.from('class_sessions').select('session_no, node_id, counts_absent').eq('class_id', classId));
         renderNodePicker(m, ns, c.class_types && c.class_types.name, ss); }).catch(() => {});
-      Promise.all([
-        fetchAll(() => db.from('students').select('code, full_name, title').order('full_name').order('code')),
-        q(db.from('class_students').select('student_code').eq('class_id', classId)),
-      ]).then(([stu, ex]) => { all = stu; inClass = new Set(ex.map((x) => x.student_code)); draw(); drawChips(); })
-        .catch((e) => { $('#alist', m).innerHTML = `<div class="small" style="padding:10px;color:var(--bad)">${esc(errMsg(e))}</div>`; });
-      $('#as', m).oninput = draw;
+      $('#as', m).oninput = () => { clearTimeout(timer); timer = setTimeout(doSearch, 300); };
       $('#tpl', m).onclick = (e) => { e.preventDefault(); downloadTemplate(); };
       $('#cancel', m).onclick = close;
       $('#af', m).onsubmit = (e) => {
         e.preventDefault();
         busy($('#ok', m), async () => {
           const existing = new Set((await q(db.from('class_students').select('student_code').eq('class_id', classId))).map((x) => x.student_code));
-          let codes = parseCodes($('#ac', m).value).concat(Array.from(sel));
+          let codes = Array.from(sel.keys());
           const nodesVal = nodePickerValue(m);
           let dup = 0;
           const f = $('#ax', m).files[0];
           if (f) {
-            const { rows } = await readStudentsFile(f); // file lỗi thì báo lỗi, không thêm gì
+            const { rows } = await readStudentsFile(f);
             const fresh = nodesVal ? rows : rows.filter((r) => !existing.has(r.code));
-            dup += rows.length - fresh.length; // đã có trong lớp: không nhập lại (trừ khi đang gán module)
+            dup += rows.length - fresh.length;
             for (let i = 0; i < fresh.length; i += 400) {
               const { error } = await db.from('students').upsert(fresh.slice(i, i + 400), { onConflict: 'code' });
               if (error) throw error;
@@ -1254,7 +1249,7 @@
           if (!nodesVal) { const already = codes.filter((c) => existing.has(c)); dup += already.length; codes = codes.filter((c) => !existing.has(c)); }
           if (!codes.length) {
             if (dup) { close(); toast(`Tất cả ${dup} học viên đã có trong lớp, không thêm lại`, 'ok'); return; }
-            throw new Error('Chưa chọn học viên nào');
+            throw new Error('Chưa chọn file hoặc học viên nào');
           }
           const res = await q(db.rpc('add_class_students', { p_class: classId, p_codes: codes, p_nodes: nodesVal }));
           const miss = res.missing || [];
