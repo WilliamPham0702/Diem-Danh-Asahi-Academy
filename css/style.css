@@ -474,3 +474,25 @@ input[type="date"].dn { position: absolute; inset: 0; width: 100%; height: 100%;
 .srow input[type=date] { padding: 0; }
 .srow .dtxt { min-height: 38px; padding: 6px 8px; font-size: 14px; }
 @media (max-width: 760px) { .srow, .srow.has-ta { grid-template-columns: minmax(0,1fr) minmax(0,1fr); } }
+
+/* ===== v42: gọn hơn trên toàn bộ trang (ô nhập, nhãn, thẻ) ===== */
+.card { padding: 12px 14px; margin-bottom: 10px; }
+.card h2 { font-size: 18px; margin-bottom: 6px; }
+.card h3 { font-size: 15px; margin-bottom: 6px; }
+.card > p { margin: 4px 0 8px; }
+label { font-size: 12px; margin: 8px 0 2px; }
+input, select, textarea { padding: 6px 10px; min-height: 38px; font-size: 16px; }
+textarea { min-height: 64px; }
+input[type=checkbox], input[type=radio] { min-height: 0; }
+.btn { padding: 7px 14px; }
+.cform { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; align-items: end; }
+.cform .f-full { grid-column: 1 / -1; }
+.cform > div:not(.f-full) { min-width: 0; }
+.cform .f-full:last-child { margin-top: 10px; }
+.grid2 { gap: 0 10px; }
+@media (max-width: 640px) {
+  .grid2 { grid-template-columns: 1fr 1fr; }
+  .grid2 > div:has(input[type=email], input[type=file], textarea) { grid-column: 1 / -1; }
+}
+details.more > summary { cursor: pointer; color: var(--navy); font-size: 13px; font-weight: 600; padding: 4px 0; }
+.pi { padding: 8px 10px; }

@@ -282,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-41';
+  const APP_VERSION = '2026.11.28-42';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -1890,21 +1890,21 @@
   // ================================================================ ADMIN: nhân sự
   async function viewStaff(el) {
     el.innerHTML = `<div class="card"><h2>Admin & Giảng viên</h2>
-      <p class="muted small">Thêm email vào danh sách, rồi gửi <b>mã mời</b> (hiện ở bảng bên dưới) cho người đó. Họ bấm "Đăng ký tài khoản?" ở màn hình đăng nhập, nhập email + mã mời để tạo tài khoản.</p>
-      <form id="sf" class="grid2"><div><label>Email</label><input id="se" type="email" required></div>
+      <details class="more"><summary>Cách mời người mới</summary><p class="muted small">Thêm email vào danh sách rồi gửi <b>mã mời</b> cho người đó. Họ bấm "Đăng ký tài khoản?" ở màn hình đăng nhập, nhập email + mã mời để tạo tài khoản.</p></details>
+      <form id="sf" class="cform"><div class="f-full"><label>Email</label><input id="se" type="email" required></div>
         <div><label>Họ tên</label><input id="sn" required></div>
         <div><label>Quyền</label><select id="sr"><option value="teacher">Giảng viên</option><option value="admin">Admin</option></select></div>
-        <div style="align-self:end"><button class="btn pink">Thêm vào danh sách</button></div></form></div>
+        <div class="f-full"><button class="btn pink">Thêm vào danh sách</button></div></form></div>
       <div class="card"><div id="t">Đang tải...</div></div><div id="tamgr"></div>`;
     viewTAs($('#tamgr')).catch((e) => toast(errMsg(e), 'bad'));
     const allowed = await q(db.from('allowed_staff').select('*').order('email'));
     const profs = await q(db.from('profiles').select('id, email, role').in('role', ['admin', 'teacher']));
     const pmap = {}; profs.forEach((p) => { pmap[p.email.toLowerCase()] = p; });
-    $('#t').innerHTML = `<div class="tbl-wrap"><table><tr><th>Email</th><th>Họ tên</th><th>Quyền</th><th>Mã mời</th><th>Tài khoản</th><th></th></tr>
-      ${allowed.map((a) => { const p = pmap[a.email.toLowerCase()]; return `<tr><td>${esc(a.email)}</td><td>${esc(a.full_name)}</td>
-        <td>${ROLE_LABEL[a.role]}</td><td><code>${esc(a.invite_code)}</code></td><td>${p ? '<span class="badge ok">Đã đăng ký</span>' : '<span class="badge gray">Chưa</span>'}</td>
-        <td class="act">${p && p.id !== me.id ? `<button class="btn sm danger" data-deluser="${p.id}">Xóa tài khoản</button>` : ''}
-          ${p ? '' : `<button class="btn sm danger" data-delmail="${esc(a.email)}">Xóa khỏi danh sách</button>`}</td></tr>`; }).join('')}</table></div>`;
+    $('#t').innerHTML = `<div class="plist" style="margin-top:0">${allowed.map((a) => { const p = pmap[a.email.toLowerCase()]; return `<div class="pi"><div class="pi-main"><b>${esc(a.full_name)}</b> <span class="badge">${ROLE_LABEL[a.role]}</span>
+        <div class="small muted" style="word-break:break-all">${esc(a.email)}</div>
+        <div class="pi-st">Mã mời: <code>${esc(a.invite_code)}</code> ${p ? '<span class="badge ok">Đã đăng ký</span>' : '<span class="badge gray">Chưa đăng ký</span>'}</div></div>
+        <div class="pi-act">${p && p.id !== me.id ? `<button class="btn sm danger" data-deluser="${p.id}">Xóa tài khoản</button>` : ''}
+          ${p ? '' : `<button class="btn sm danger" data-delmail="${esc(a.email)}">Xóa</button>`}</div></div>`; }).join('')}</div>`;
     $('#sf').onsubmit = (e) => {
       e.preventDefault();
       busy($('#sf button'), async () => {
