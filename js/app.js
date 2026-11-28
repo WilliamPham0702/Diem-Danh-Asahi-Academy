@@ -19,6 +19,7 @@
     SESSION_NOT_FOUND: 'Không tìm thấy buổi học',
     CANNOT_DELETE_SELF: 'Không thể xóa tài khoản của chính mình',
     OUT_OF_SESSION: 'Đã qua buổi học này, chỉ admin mới mở lại được (Reset QR)',
+    NOT_YET: 'Chưa đến giờ mở QR của buổi học này (sáng 8:00, chiều 12:30, tối 18:00)',
     NAME_REQUIRED: 'Vui lòng nhập tên lớp',
     STUDENT_NOT_IN_LIST: 'Mã học viên không có trong danh sách. Hãy liên hệ giảng viên của bạn.',
     INVITE_INVALID: 'Email hoặc mã mời không đúng. Hãy liên hệ admin.',
@@ -34,7 +35,7 @@
     return m;
   }
 
-  // Cửa sổ mở QR theo ca (giờ VN): sáng 00:00-12:30, chiều 12:00-17:30, tối 17:00-24:00, không ca: cả ngày
+  // Cửa sổ mở QR theo ca (giờ VN): sáng 8:00-12:00 (tắt tự động 9:00), chiều 12:30-17:30 (13:30), tối 18:00-23:00 (19:00), không ca: cả ngày
   function qrOpenable(s) {
     const now = Date.now();
     if (s.qr_reset_until && now <= new Date(s.qr_reset_until).getTime()) return true;
@@ -42,8 +43,8 @@
     const d = s.session_date;
     const at = (t) => new Date(d + 'T' + t + '+07:00').getTime();
     const next = new Date(new Date(d + 'T00:00:00+07:00').getTime() + 86400000).getTime();
-    const a = s.shift === 'chieu' ? at('12:00:00') : s.shift === 'toi' ? at('17:00:00') : at('00:00:00');
-    const b = s.shift === 'sang' ? at('12:30:00') : s.shift === 'chieu' ? at('17:30:00') : next;
+    const a = s.shift === 'sang' ? at('08:00:00') : s.shift === 'chieu' ? at('12:30:00') : s.shift === 'toi' ? at('18:00:00') : at('00:00:00');
+    const b = s.shift === 'sang' ? at('12:00:00') : s.shift === 'chieu' ? at('17:30:00') : s.shift === 'toi' ? at('23:00:00') : next;
     return now >= a && now <= b;
   }
   function qrButtons(s, withClose) {
@@ -247,7 +248,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-19';
+  const APP_VERSION = '2026.11.28-20';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -937,6 +938,7 @@
       </div>`;
 
     let stopped = false;
+    let reopened = false;
     const timers = [];
     let explicitClosed = false;
     addCleanup(() => {
@@ -959,7 +961,15 @@
 
     async function loadToken() {
       if (stopped) return;
-      const { data, error } = await db.rpc('get_qr_token', { p_session: id });
+      const { data, error } = await db.rpc('get_qr_token', { p_session: id, p_reopen: reopened });
+      if (data && data.error === 'QR_EXPIRED') {
+        timers.forEach(clearInterval); timers.length = 0;
+        const box = $('.qr-box'); if (box) box.style.opacity = '.15';
+        $('#hint').style.color = '#ffd27a';
+        $('#hint').innerHTML = '<b>Hết giờ điểm danh.</b> Học viên quét sau giờ này sẽ tính là điểm danh muộn.<br><button class="btn sm" id="reopen" style="margin-top:8px">Mở lại mã QR</button>';
+        $('#reopen').onclick = () => { reopened = true; if (box) box.style.opacity = ''; $('#hint').style.color = ''; $('#hint').textContent = 'Mã tự đổi mỗi 10 giây (điểm danh muộn)'; loadToken(); timers.push(setInterval(loadToken, 10000)); timers.push(setInterval(loadCount, 4000)); };
+        return;
+      }
       if (error || !data || data.error || !data.token) {
         $('#hint').textContent = errMsg(error || { message: (data && data.error) || 'Lỗi' }); $('#hint').style.color = '#ffb3be';
         timers.forEach(clearInterval); return;
