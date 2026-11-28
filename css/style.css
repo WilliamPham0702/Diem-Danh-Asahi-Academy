@@ -331,3 +331,22 @@ body, body:has(.auth) { background: transparent !important; }
 
 .quote{text-align:center;margin:10px 0;padding:8px 10px;border-radius:10px;background:rgba(0,47,114,.06)}
 .qjp{font-size:20px;font-weight:700;color:var(--navy);letter-spacing:2px}
+
+/* v25: trang chủ học viên phong cách Asahi */
+.welcome2{position:relative;overflow:hidden;border-radius:18px;padding:22px 20px 20px;margin-bottom:14px;color:#fff;background:linear-gradient(135deg,#002F72 0%,#0b4aa6 100%);box-shadow:0 10px 30px rgba(0,47,114,.35)}
+.welcome2:after{content:"";position:absolute;right:-40px;top:-40px;width:160px;height:160px;border-radius:50%;background:radial-gradient(circle,#e83e8c 0%,rgba(232,62,140,0) 70%);opacity:.55}
+.w-kanji{font-size:13px;letter-spacing:6px;opacity:.75}
+.w-hello{margin-top:6px;font-size:15px;opacity:.9;letter-spacing:.5px}
+.w-name{font-size:30px;line-height:1.15;font-weight:800;margin:2px 0 4px;letter-spacing:.2px}
+.w-to{font-size:15px;opacity:.95}
+.w-wish{margin-top:14px;padding-left:12px;border-left:3px solid #e83e8c;font-size:14.5px;line-height:1.5;opacity:.95}
+.ccard{background:#fff;border-radius:16px;padding:14px 14px 12px;margin:10px 0;box-shadow:0 2px 12px rgba(0,47,114,.12);border:1px solid rgba(0,47,114,.08)}
+.ccard.go{cursor:pointer;border-left:4px solid #002F72}
+.ccard.go:active{transform:scale(.99)}
+.cc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.cc-name{font-weight:800;font-size:16px;color:#002F72;word-break:break-word}
+.cc-meta{margin-top:8px;font-size:13.5px;display:grid;gap:3px}
+.cc-meta span{display:inline-block;min-width:78px;color:#7a86a3;font-size:12px;text-transform:uppercase;letter-spacing:.4px}
+.cc-prog{margin-top:10px}
+.bar{height:6px;border-radius:6px;background:#e6eaf4;overflow:hidden;margin-bottom:5px}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,#002F72,#e83e8c);border-radius:6px}

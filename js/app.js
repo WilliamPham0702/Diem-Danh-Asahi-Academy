@@ -252,7 +252,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-24';
+  const APP_VERSION = '2026.11.28-25';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -529,10 +529,12 @@
   async function viewHome(el) {
     const w = wishNow();
     el.innerHTML = `
-      <div class="card welcome">
-        <div class="muted small" style="letter-spacing:3px">歓迎</div>
-        <h2 style="margin:4px 0 6px">Chào mừng ${esc(me.full_name || 'bạn')} đã đến với Asahi Academy</h2>
-        <p style="margin:0">${esc(w.text)}</p></div>
+      <div class="welcome2">
+        <div class="w-kanji">歓迎</div>
+        <div class="w-hello">Chào mừng</div>
+        <div class="w-name">${esc(me.full_name || 'bạn')}</div>
+        <div class="w-to">đã đến với <b>Asahi Academy</b></div>
+        <div class="w-wish">${esc(w.text)}</div></div>
       <div id="cl" class="muted center">Đang tải lớp học...</div>`;
     const box = $('#cl', el);
     const rows = await q(db.rpc('list_open_classes'));
@@ -544,15 +546,22 @@
     };
     const joined = rows.filter((c) => c.joined);
     const open = rows.filter((c) => !c.joined);
-    const card = (c, isOpen) => `<div class="cl-item">
-      <div class="cl-main"><b>${esc(c.name)}</b>
-        <div class="small muted">Thời gian: ${esc(fmtRange(c))}${c.location ? '<br>Địa điểm: ' + esc(c.location) : ''}${(c.teachers || []).length ? '<br>Giảng viên: ' + esc(c.teachers.join(', ')) : ''}</div>
-        ${isOpen ? '' : `<div class="small" style="margin-top:4px">Đã điểm danh <b>${c.attended}/${c.total_sessions}</b> buổi</div>`}</div>
-      ${isOpen ? `<button class="btn pink sm" data-reg="${c.id}">Đăng ký</button>` : '<span class="badge ok">Đã tham gia</span>'}</div>`;
+    const card = (c, isOpen) => {
+      const pct = c.total_sessions ? Math.round(100 * c.attended / c.total_sessions) : 0;
+      return `<div class="ccard ${isOpen ? '' : 'go'}" ${isOpen ? '' : `data-go="1" role="button" tabindex="0"`}>
+      <div class="cc-top"><span class="cc-name">${esc(c.name)}</span>${isOpen ? '' : '<span class="badge ok">Đã tham gia</span>'}</div>
+      <div class="cc-meta"><div><span>Thời gian</span>${esc(fmtRange(c))}</div>
+        ${c.location ? `<div><span>Địa điểm</span>${esc(c.location)}</div>` : ''}
+        ${(c.teachers || []).length ? `<div><span>Giảng viên</span>${esc(c.teachers.join(', '))}</div>` : ''}</div>
+      ${isOpen ? `<button class="btn pink" data-reg="${c.id}" style="width:100%;margin-top:10px">Đăng ký lớp này</button>`
+        : `<div class="cc-prog"><div class="bar"><i style="width:${pct}%"></i></div><div class="small">Đã điểm danh <b>${c.attended}/${c.total_sessions}</b> buổi · <u>Bấm để điểm danh</u></div></div>`}
+    </div>`;
+    };
     const section = (title, list, isOpen, empty) => `<div class="card"><h3>${title}</h3>${list.length ? group(list).map(([k, items]) =>
       `<div class="cl-type">${esc(k)}</div>${items.map((c) => card(c, isOpen)).join('')}`).join('') : `<p class="muted">${empty}</p>`}</div>`;
     box.outerHTML = section('Lớp học của bạn', joined, false, 'Bạn chưa tham gia lớp nào.')
       + section('Lớp đang mở đăng ký', open, true, 'Hiện chưa có lớp nào mở đăng ký.');
+    $$('.ccard.go', el).forEach((d) => { d.onclick = () => nav('scan'); });
     $$('[data-reg]', el).forEach((b) => { b.onclick = () => {
       const c = rows.find((x) => x.id === b.dataset.reg);
       modal(`<h3 style="text-align:center">Đăng ký lớp</h3>
