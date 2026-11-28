@@ -282,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-53';
+  const APP_VERSION = '2026.11.28-55';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -1770,16 +1770,17 @@
     $('#sc_go', box).onclick = (e) => busy(e.target, async () => {
       const f = $('#sc_f', box).value, t = $('#sc_to', box).value, cid = $('#sc_c', box).value, tem = $('#sc_t', box).value;
       const key = norm($('#sc_s', box).value.trim()), stf = $('#sc_st', box).value, ord = $('#sc_o', box).value;
-      let cq = db.from('classes').select('id, name, start_date, ended_at, class_types(name)'); if (cid) cq = cq.eq('id', cid);
+      let cq = db.from('classes').select('id, name, start_date, ended_at, class_type_id, class_types(name)'); if (cid) cq = cq.eq('id', cid);
       const cls = await q(cq);
       if (!cls.length) throw new Error('Không có lớp nào');
-      const sessions = await fetchAll(() => { const b = db.from('class_sessions').select('id, class_id, session_date, teacher_email, opened_at').order('id'); return cid ? b.eq('class_id', cid) : b; });
-      const roster = await fetchAll(() => { const b = db.from('class_students').select('class_id, students(code, full_name, title)').order('class_id').order('student_code'); return cid ? b.eq('class_id', cid) : b; });
+      const sessions = await fetchAll(() => { const b = db.from('class_sessions').select('id, class_id, session_date, teacher_email, opened_at, node_id, counts_absent').order('id'); return cid ? b.eq('class_id', cid) : b; });
+      const roster = await fetchAll(() => { const b = db.from('class_students').select('class_id, node_ids, added_at, students(code, full_name, title)').order('class_id').order('student_code'); return cid ? b.eq('class_id', cid) : b; });
       const att = await fetchAll(() => { const b = db.from('attendance').select('session_id, student_code, class_sessions!inner(class_id)').order('id'); return cid ? b.eq('class_sessions.class_id', cid) : b; });
       const tname = {}; teachers.forEach((x) => { tname[String(x.email).toLowerCase()] = x.full_name || x.email; });
       const attCnt = {}; const sc = {}; sessions.forEach((x) => { sc[x.id] = x.class_id; });
       att.forEach((a) => { const k = sc[a.session_id] + '|' + a.student_code; attCnt[k] = (attCnt[k] || 0) + 1; });
       const today = vnToday();
+      const nodesAll = await loadNodes(); const attKey = new Set(att.map((a) => a.session_id + '|' + a.student_code));
       const info = {};
       cls.forEach((c) => {
         const ss = sessions.filter((x) => x.class_id === c.id);
@@ -1796,12 +1797,15 @@
         if (tem && !i.teachers.includes(tem)) return;
         if (stf && (stf === 'act') !== i.active) return;
         if (key && !norm(st.code + ' ' + st.full_name).includes(key)) return;
-        const opened = i.ss.filter((x) => x.opened_at).length;
-        const present = attCnt[r.class_id + '|' + st.code] || 0;
+        const cn = i.c.class_type_id ? nodesAll.filter((n) => n.class_type_id === i.c.class_type_id) : [];
+        const mine = i.ss.filter((x) => (!cn.length || inNodes(r.node_ids, x.node_id, cn)) && !(r.added_at && x.opened_at && x.opened_at < r.added_at && !attKey.has(x.id + '|' + st.code)));
+        const mineIds = new Set(mine.map((x) => x.id));
+        const present = att.filter((a) => a.student_code === st.code && mineIds.has(a.session_id)).length;
+        const absentN = mine.filter((x) => x.opened_at && x.counts_absent !== false && !attKey.has(x.id + '|' + st.code)).length;
         rows.push({ code: st.code, name: st.full_name, title: st.title || '', cls: i.c.name, type: i.c.class_types?.name || '',
           tch: i.teachers.map((e) => tname[e] || e).join(', '), first: i.first, last: i.last,
           status: i.c.ended_at ? 'Đã kết thúc' : i.active ? 'Đang học' : 'Đã học xong', active: i.active,
-          present: present + '/' + i.ss.length, absent: Math.max(0, opened - present) });
+          present: present + '/' + mine.length, absent: absentN });
       });
       if (!rows.length) throw new Error('Không có dữ liệu phù hợp bộ lọc');
       const vi = (a, b) => String(a).localeCompare(String(b), 'vi');
@@ -1890,66 +1894,84 @@
   }
 
   async function exportReport(classIds, from, to) {
-    let cq = db.from('classes').select('id, name, start_date, class_types(name, max_absent)').order('name');
+    let cq = db.from('classes').select('id, name, start_date, class_type_id, class_types(name, max_absent)').order('name');
     if (classIds) cq = cq.in('id', classIds);
     const classes = await q(cq);
     if (!classes.length) throw new Error('Không có lớp nào để xuất');
     const ids = classes.map((c) => c.id);
 
     const sessions = await fetchAll(() => { let b = db.from('class_sessions').select('*').order('id'); if (classIds) b = b.in('class_id', ids); return b; });
-    const roster = await fetchAll(() => { let b = db.from('class_students').select('class_id, students(*)').order('class_id').order('student_code'); if (classIds) b = b.in('class_id', ids); return b; });
+    const roster = await fetchAll(() => { let b = db.from('class_students').select('class_id, node_ids, added_at, students(*)').order('class_id').order('student_code'); if (classIds) b = b.in('class_id', ids); return b; });
+    const allNodes = await loadNodes();
     const att = await fetchAll(() => { let b = db.from('attendance').select('*, class_sessions!inner(class_id)').order('id'); if (classIds) b = b.in('class_sessions.class_id', ids); return b; });
     const amap = {}; att.forEach((a) => { amap[a.session_id + '|' + a.student_code] = a; });
 
     const detail = []; const summary = {};
-    const limitByClass = {}; classes.forEach((c) => { limitByClass[c.name] = c.class_types?.max_absent; });
+    const modCodes = new Set();
     for (const c of classes) {
-      const sess = sessions.filter((s) => s.class_id === c.id)
-        .filter((s) => (!from || (s.session_date && s.session_date >= from)) && (!to || (s.session_date && s.session_date <= to)))
+      const cn = c.class_type_id ? allNodes.filter((n) => n.class_type_id === c.class_type_id) : [];
+      const modOf = (sx) => { const n = cn.find((x) => x.id === sx.node_id); return n ? (n.parent_id ? cn.find((x) => x.id === n.parent_id) || n : n) : null; };
+      const learnTxt = (ids) => (!ids || !ids.length ? 'Tất cả' : ids.map((id) => { const n = cn.find((x) => x.id === id); if (!n) return ''; const p = n.parent_id ? cn.find((x) => x.id === n.parent_id) : null; return p ? p.code + '-' + n.code : n.code; }).filter(Boolean).join(', '));
+      const sess = sessions.filter((x) => x.class_id === c.id)
+        .filter((x) => (!from || (x.session_date && x.session_date >= from)) && (!to || (x.session_date && x.session_date <= to)))
         .sort((a, b) => a.session_no - b.session_no);
-      const stu = roster.filter((r) => r.class_id === c.id).map((r) => r.students).filter(Boolean)
-        .sort((a, b) => String(a.full_name).localeCompare(String(b.full_name), 'vi'));
-      for (const st of stu) {
-        const key = c.id + '|' + st.code;
-        summary[key] = { 'Lớp': c.name, 'Mã HV': st.code, 'Họ tên': st.full_name, 'Chức danh': st.title || '',
-          'Đúng giờ': 0, 'Muộn': 0, 'Vắng': 0, 'Chưa mở': 0 };
-        const limit = c.class_types?.max_absent;
-        for (const s of sess) {
-          const a = amap[s.id + '|' + st.code];
-          const status = lateInfo(s, c, a);
-          const sKey = status.startsWith('Có mặt') ? 'Đúng giờ' : status;
-          if (summary[key][sKey] !== undefined) summary[key][sKey]++;
+      const stu = roster.filter((r) => r.class_id === c.id && r.students)
+        .sort((a, b) => String(a.students.full_name).localeCompare(String(b.students.full_name), 'vi'));
+      for (const r of stu) {
+        const st = r.students; const key = c.id + '|' + st.code;
+        const row = summary[key] = { 'Lớp': c.name, 'Mã HV': st.code, 'Họ tên': st.full_name, 'Chức danh': st.title || '', 'Module học': cn.length ? learnTxt(r.node_ids) : '',
+          'Đúng giờ': 0, 'Muộn': 0, 'Vắng': 0, 'Vắng không tính': 0, 'Chưa mở': 0, mods: {} };
+        for (const sx of sess) {
+          if (cn.length && !inNodes(r.node_ids, sx.node_id, cn)) continue; // buổi ngoài module của học viên
+          const a = amap[sx.id + '|' + st.code];
+          if (!a && r.added_at && sx.opened_at && sx.opened_at < r.added_at) continue; // buổi mở trước ngày vào lớp
+          let status = lateInfo(sx, c, a);
+          const free = status === 'Vắng' && sx.counts_absent === false;
+          if (free) status = 'Vắng (không tính)';
+          const sKey = status.startsWith('Có mặt') ? 'Đúng giờ' : free ? 'Vắng không tính' : status;
+          if (row[sKey] !== undefined) row[sKey]++;
+          const m = modOf(sx);
+          if (m) { modCodes.add(m.code); const e = row.mods[m.code] || (row.mods[m.code] = { used: 0, max: m.max_absent == null ? 1 : m.max_absent }); if (status === 'Vắng') e.used++; }
+          const nd = cn.find((x) => x.id === sx.node_id);
           detail.push({
-            'Lớp': c.name, 'Khoá học': c.class_types?.name || '', 'Buổi': s.session_no, 'Nội dung': s.content || '',
-            'Ngày học': fmtDate(s.session_date), 'Ca': s.shift ? SHIFT_LABEL[s.shift] : '', 'Mã HV': st.code, 'Họ tên': st.full_name,
+            'Lớp': c.name, 'Khoá học': c.class_types?.name || '', 'Module': nd ? nodeCode(c.class_types?.name, nd, cn) : '', 'Buổi': sx.session_no, 'Nội dung': sx.content || '',
+            'Ngày học': fmtDate(sx.session_date), 'Ca': sx.shift ? SHIFT_LABEL[sx.shift] : '', 'Mã HV': st.code, 'Họ tên': st.full_name,
             'Chức danh': st.title || '', 'Trạng thái': status,
             'Giờ điểm danh': a ? fmtTime(a.checked_at) : '', 'Hình thức': a ? (a.source === 'manual' ? 'Giảng viên điểm danh' : 'QR') : '',
             'Vị trí': !a || a.source === 'manual' ? '' : a.out_of_area === true ? 'Ngoài khu vực' : a.out_of_area === false ? 'Trong khu vực' : 'Chưa đối chiếu',
           });
         }
+        if (!cn.length) row.legacyMax = c.class_types?.max_absent;
       }
     }
     if (!detail.length) throw new Error('Không có dữ liệu trong khoảng này');
+    const mcodes = Array.from(modCodes).sort();
     const sum = Object.values(summary).map((r) => {
       const opened = r['Đúng giờ'] + r['Muộn'] + r['Vắng'];
-      const lim = limitByClass[r['Lớp']];
-      return { ...r, 'Tỷ lệ có mặt': opened ? Math.round(((r['Đúng giờ'] + r['Muộn']) / opened) * 100) + '%' : '',
-        'Cảnh báo vắng': lim != null && r['Vắng'] > lim ? `Vắng quá ${lim} buổi` : '' };
+      const over = [], full = [];
+      Object.entries(r.mods).forEach(([k, e]) => { if (e.used > e.max) over.push(`${k} ${e.used}/${e.max}`); else if (e.used >= 1 && e.used === e.max) full.push(`${k} ${e.used}/${e.max}`); });
+      if (r.legacyMax != null && r['Vắng'] > r.legacyMax) over.push(`Cả khoá ${r['Vắng']}/${r.legacyMax}`);
+      const out = { ...r, 'Tỷ lệ có mặt': opened ? Math.round(((r['Đúng giờ'] + r['Muộn']) / opened) * 100) + '%' : '',
+        'Cảnh báo vắng': [over.length ? 'Vượt ' + over.join(', ') : '', full.length ? 'Hết lượt ' + full.join(', ') : ''].filter(Boolean).join(' · ') };
+      mcodes.forEach((k) => { const e = r.mods[k]; out['mod_' + k] = e ? `${e.used}/${e.max}` : '—'; });
+      return out;
     });
     const names = classes.map((c) => c.name).join(', ');
     const info = [['Lớp', classes.length > 3 ? `${classes.length} lớp` : names],
       ['Kỳ báo cáo', from || to ? `${from ? fmtDate(from) : '...'} → ${to ? fmtDate(to) : '...'}` : 'Toàn bộ thời gian'],
-      ['Quy ước', 'Đúng giờ · Muộn · Vắng (chỉ tính các buổi đã mở điểm danh)']];
+      ['Quy ước', 'Đúng giờ · Muộn · Vắng (chỉ tính buổi đã mở điểm danh). Vắng tính riêng từng module: số vắng/số buổi được vắng. Không tính buổi MOF, buổi ngoài module học viên học, và buổi mở trước ngày học viên vào lớp.']];
     const d = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     await saveXlsx(`BaoCao_DiemDanh_${d}.xlsx`, [
       { name: 'Tổng hợp', title: 'Báo cáo tổng hợp điểm danh', info, rows: sum,
         cols: [{ header: 'STT', key: '#', width: 6, align: 'center' }, { header: 'Lớp', key: 'Lớp', width: 24 }, { header: 'Mã HV', key: 'Mã HV', width: 13, align: 'center' },
-          { header: 'Họ và tên', key: 'Họ tên', width: 28 }, { header: 'Chức danh', key: 'Chức danh', width: 20 },
+          { header: 'Họ và tên', key: 'Họ tên', width: 28 }, { header: 'Chức danh', key: 'Chức danh', width: 20 }, { header: 'Module học', key: 'Module học', width: 16, align: 'center' },
           { header: 'Đúng giờ', key: 'Đúng giờ', width: 10, align: 'center' }, { header: 'Muộn', key: 'Muộn', width: 9, align: 'center' },
-          { header: 'Vắng', key: 'Vắng', width: 9, align: 'center' }, { header: 'Chưa mở', key: 'Chưa mở', width: 10, align: 'center' },
-          { header: 'Tỷ lệ có mặt', key: 'Tỷ lệ có mặt', width: 12, align: 'center' }, { header: 'Cảnh báo', key: 'Cảnh báo vắng', width: 20 }] },
+          { header: 'Vắng (tính)', key: 'Vắng', width: 11, align: 'center' },
+          ...mcodes.map((k) => ({ header: `Vắng ${k} (đã vắng/được vắng)`, key: 'mod_' + k, width: 16, align: 'center' })),
+          { header: 'Vắng không tính (MOF)', key: 'Vắng không tính', width: 14, align: 'center' }, { header: 'Chưa mở', key: 'Chưa mở', width: 10, align: 'center' },
+          { header: 'Tỷ lệ có mặt', key: 'Tỷ lệ có mặt', width: 12, align: 'center' }, { header: 'Cảnh báo', key: 'Cảnh báo vắng', width: 34 }] },
       { name: 'Chi tiết', title: 'Chi tiết điểm danh từng buổi', info, rows: detail,
-        cols: [{ header: 'STT', key: '#', width: 6, align: 'center' }, { header: 'Lớp', key: 'Lớp', width: 24 }, { header: 'Khoá học', key: 'Khoá học', width: 16 },
+        cols: [{ header: 'STT', key: '#', width: 6, align: 'center' }, { header: 'Lớp', key: 'Lớp', width: 24 }, { header: 'Khoá học', key: 'Khoá học', width: 16 }, { header: 'Module', key: 'Module', width: 18 },
           { header: 'Buổi', key: 'Buổi', width: 7, align: 'center' }, { header: 'Nội dung', key: 'Nội dung', width: 28 }, { header: 'Ngày học', key: 'Ngày học', width: 12, align: 'center' },
           { header: 'Ca', key: 'Ca', width: 9, align: 'center' }, { header: 'Mã HV', key: 'Mã HV', width: 13, align: 'center' }, { header: 'Họ và tên', key: 'Họ tên', width: 26 },
           { header: 'Chức danh', key: 'Chức danh', width: 18 }, { header: 'Trạng thái', key: 'Trạng thái', width: 20, color: STATUS_COLOR },

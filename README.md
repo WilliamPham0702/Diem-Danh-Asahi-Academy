@@ -81,3 +81,8 @@ Repo > **Settings > Pages** > Source: nhánh `main`, thư mục `/ (root)`. Sau 
 - Mã nguồn: các tag `v*` trên GitHub và file zip sao lưu.
 - Cơ sở dữ liệu: `supabase/schema.sql` dựng lại toàn bộ cấu trúc. Dữ liệu (học viên, điểm danh) xuất riêng, **không đưa lên repo** vì repo công khai.
 - Khôi phục: tạo dự án Supabase mới, chạy `schema.sql`, nhập dữ liệu, sửa `js/config.js`.
+
+## Báo cáo theo module (v55)
+- Vắng tính riêng từng module (cấp 2): số vắng / số buổi được vắng (mặc định 1, chỉnh ở trang Khoá học).
+- Không tính: buổi MOF (counts_absent=false), buổi ngoài module học viên học, buổi mở trước ngày học viên vào lớp (cột `class_students.added_at`).
+- Excel "Điểm danh theo lớp": cột Module học, Vắng từng module, Cảnh báo (Vượt / Hết lượt); trang Chi tiết có cột Module. "Học viên theo lớp": Có mặt/Vắng theo đúng phần học.
