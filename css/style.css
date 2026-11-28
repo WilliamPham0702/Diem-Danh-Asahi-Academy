@@ -328,3 +328,6 @@ body, body:has(.auth) { background: transparent !important; }
 .sc.abs0 { background: #f6eef0; color: #b98a92; }
 .sc.none { background: #eceef5; color: #9aa0b4; }
 .sc.inl { display: inline-block; flex: none; width: 22px; padding: 1px 0; }
+
+.quote{text-align:center;margin:10px 0;padding:8px 10px;border-radius:10px;background:rgba(0,47,114,.06)}
+.qjp{font-size:20px;font-weight:700;color:var(--navy);letter-spacing:2px}

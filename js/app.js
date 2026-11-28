@@ -252,7 +252,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-21';
+  const APP_VERSION = '2026.11.28-22';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -285,7 +285,7 @@
           ${login
             ? '<p class="small" style="margin:12px 0 0"><a href="#" id="forgot">Quên mật khẩu?</a> &nbsp;·&nbsp; <a href="#" id="signup">Đăng ký tài khoản?</a></p>'
             : '<p class="small" style="margin:12px 0 0"><a href="#" id="back">← Quay lại đăng nhập</a></p>'}
-          ${login ? '<p class="muted small">Học viên đăng nhập lần đầu: mật khẩu chính là mã học viên của bạn, sau đó hệ thống yêu cầu đổi mật khẩu. </p>' : ''}
+          ${login ? quoteHtml() : ''}
         </div>
       </div>`;
     if (login) {
@@ -455,6 +455,26 @@
     });
   }
 
+  const QUOTES = [
+    ['一期一会', 'Ichigo ichie', 'Mỗi cuộc gặp gỡ chỉ có một lần, hãy trân trọng từng buổi học.'],
+    ['七転び八起き', 'Nanakorobi yaoki', 'Ngã bảy lần, đứng dậy tám lần.'],
+    ['継続は力なり', 'Keizoku wa chikara nari', 'Kiên trì chính là sức mạnh.'],
+    ['千里の道も一歩から', 'Senri no michi mo ippo kara', 'Đường ngàn dặm bắt đầu từ một bước chân.'],
+    ['為せば成る', 'Naseba naru', 'Có làm thì sẽ thành.'],
+    ['日々是好日', 'Nichinichi kore kōjitsu', 'Mỗi ngày đều là một ngày tốt lành.'],
+    ['初心忘るべからず', 'Shoshin wasuru bekarazu', 'Đừng quên tâm thế của ngày đầu tiên.'],
+    ['石の上にも三年', 'Ishi no ue ni mo sannen', 'Kiên nhẫn đủ lâu, đá cũng thành chỗ ngồi ấm.'],
+    ['笑う門には福来る', 'Warau kado ni wa fuku kitaru', 'Nụ cười mở cửa cho may mắn.'],
+    ['努力は裏切らない', 'Doryoku wa uragiranai', 'Nỗ lực sẽ không phụ lòng người.'],
+    ['塵も積もれば山となる', 'Chiri mo tsumoreba yama to naru', 'Tích tiểu thành đại.'],
+    ['急がば回れ', 'Isogaba maware', 'Chậm mà chắc, cẩn thận sẽ đến đích nhanh hơn.'],
+  ];
+  function quoteHtml() {
+    let i = Math.floor(Math.random() * QUOTES.length);
+    try { const last = +sessionStorage.getItem('lastQuote'); if (QUOTES.length > 1 && i === last) i = (i + 1) % QUOTES.length; sessionStorage.setItem('lastQuote', i); } catch (e) {}
+    const [jp, ro, vi] = QUOTES[i];
+    return `<div class="quote"><div class="qjp">${jp}</div><div class="small muted">${ro}</div><div class="small">${vi}</div></div>`;
+  }
   // ================================================================ HỌC VIÊN: nhắc điểm danh
   async function checkReminder() {
     if (!me || me.role !== 'student' || Date.now() - reminderAt < 5 * 60 * 1000) return;
