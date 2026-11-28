@@ -267,7 +267,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-36';
+  const APP_VERSION = '2026.11.28-37';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -1430,11 +1430,11 @@
       const shown = list.slice(0, 300);
       $('#t').innerHTML = `<p class="muted small">${list.length} học viên${list.length > 300 ? ' (hiển thị 300 đầu tiên, hãy tìm kiếm để lọc)' : ''}</p>
         <div class="plist">
-        ${shown.map((s) => { const p = pmap[s.code]; return `<div class="pi">
-          <div class="pi-main"><b>${esc(s.full_name)}</b>
-            <div class="small muted">${esc(s.code)}${s.title ? ' · ' + esc(s.title) : ''}</div>
-            <div class="pi-st"><span class="small muted">Lớp đang học:</span> ${(cmap[s.code] || []).map((c) => `<span class="badge">${esc(c.name)}</span>`).join(' ') || '<span class="muted small">Không có</span>'}${doneN[s.code] ? `<span class="small muted">· đã học xong ${doneN[s.code]} lớp</span>` : ''}</div></div>
-          <div class="pi-act pi-full">${p ? `<button class="btn sm ghost" data-resetpw="${esc(s.code)}">Đặt lại MK</button>` : ''}
+        <div class="trow rrow thead"><div>Học viên</div><div>Lớp đang học</div><div></div></div>
+        ${shown.map((s) => { const p = pmap[s.code]; return `<div class="trow rrow">
+          <div class="t-main"><b>${esc(s.full_name)}</b><div class="small muted">${esc(s.code)}${s.title ? ' · ' + esc(s.title) : ''}</div></div>
+          <div class="pi-st">${(cmap[s.code] || []).map((c) => `<span class="badge">${esc(c.name)}</span>`).join(' ') || '<span class="muted small">Không có</span>'}${doneN[s.code] ? `<span class="small muted">· đã học xong ${doneN[s.code]} lớp</span>` : ''}</div>
+          <div class="t-act">${p ? `<button class="btn sm ghost" data-resetpw="${esc(s.code)}">Đặt lại MK</button>` : ''}
             ${p?.device_id ? `<button class="btn sm ghost" data-reset="${esc(s.code)}">Đặt lại thiết bị</button>` : ''}
             ${isAdmin && p ? `<button class="btn sm danger" data-deluser="${p.id}">Xóa tài khoản</button>` : ''}
             ${isAdmin ? `<button class="btn sm danger" data-delstu="${esc(s.code)}">Xóa HV</button>` : ''}</div></div>`; }).join('')}

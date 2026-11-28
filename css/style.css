@@ -449,3 +449,5 @@ button.sc:active { transform: scale(.94); }
 .trow .sc i { font-size: 8px; }
 .trow { grid-template-columns: minmax(0,1fr) 80px minmax(0,2.4fr) auto; }
 @media (max-width: 900px) { .trow { grid-template-columns: minmax(0,1fr) auto; } }
+.trow.rrow { grid-template-columns: minmax(0,1.1fr) minmax(0,1.3fr) auto; }
+@media (max-width: 900px) { .trow.rrow { grid-template-columns: minmax(0,1fr); } .trow.rrow .t-act { justify-content: flex-start; } }
