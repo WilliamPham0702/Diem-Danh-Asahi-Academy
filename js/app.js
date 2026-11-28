@@ -282,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-46';
+  const APP_VERSION = '2026.11.28-47';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -1923,7 +1923,7 @@
   // ================================================================ ADMIN: khoá học
   async function viewTypes(el) {
     el.innerHTML = '<div class="card" id="newbox"></div><div class="card"><h2>Khoá học</h2><p class="muted small">Mỗi khoá học có các module (cấp 2, ví dụ M1, M2) và nhóm (cấp 3, nếu có). Mỗi buổi thuộc đúng một module hoặc nhóm. Mỗi module có số buổi được vắng riêng.</p><div id="t">Đang tải...</div></div>';
-    const types = await q(db.from('class_types').select('id, name, description, class_type_sessions(session_no, content, day_no, shift, node_id)').order('name'));
+    const types = await q(db.from('class_types').select('id, name, description, class_type_sessions(id, session_no, content, day_no, shift, node_id, counts_absent)').order('name'));
     const nodes = await loadNodes();
     $('#t').innerHTML = types.length ? types.map((t) => {
       const tn = nodes.filter((n) => n.class_type_id === t.id);
@@ -1935,7 +1935,7 @@
         const c3code = par ? t.name + '-' + par.code + '-' + n.code : '—';
         return `<tr><td class="n">${i + 1}</td><td class="cd">${esc(t.name)}</td><td class="cd">${esc(c2code)}</td><td class="cd">${esc(c3code)}</td><td class="n">Buổi ${x.session_no}</td><td class="ct">${esc(x.content)}</td></tr>`; }).join('');
       return `<div style="border-top:1px solid var(--line);padding:10px 0">
-        <div class="row between"><b>${esc(t.name)}</b> <span><span class="badge">${ss.length} buổi</span> <button class="btn sm danger" data-del="${t.id}">Xóa</button></span></div>
+        <div class="row between"><b>${esc(t.name)}</b> <span><span class="badge">${ss.length} buổi</span> <button class="btn sm ghost" data-edit="${t.id}">Sửa</button> <button class="btn sm danger" data-del="${t.id}">Xóa</button></span></div>
         <div class="muted small">${esc(t.description || '')}</div>
         <div class="tbl-wrap"><table class="ctab"><tr><th>STT</th><th>Cấp 1</th><th>Cấp 2</th><th>Cấp 3</th><th>Buổi</th><th>Nội dung</th></tr>${rows}</table></div>
         <div class="cset"><b class="small">Cài đặt chung: số buổi được vắng</b>
@@ -1946,34 +1946,94 @@
     $$('[data-del]', el).forEach((b) => { b.onclick = () => {
       if (!confirm('Xóa khoá học này? Các lớp đã tạo vẫn giữ nguyên.')) return;
       busy(b, async () => { await q(db.from('class_types').delete().eq('id', b.dataset.del)); render(); }); }; });
-    $('#newbox').innerHTML = `<h3>Tạo khoá học mới</h3><form id="tf">
-      <label>Mã khoá học (cấp 1)</label><input id="tn" required placeholder="VD: LPFC-F">
-      <label>Mô tả</label><input id="td">
-      <label>Số buổi được vắng mỗi module <span class="muted small">(mặc định)</span></label><input id="tm" type="number" min="0" value="1">
-      <label>Các buổi học, mỗi dòng 1 buổi: <b>mã | nội dung</b></label>
-      <textarea id="ts" required style="min-height:120px" placeholder="M1 | Tổng quan Asahi Life&#10;M1 | Pháp luật bảo hiểm&#10;M2-TT | Compliance&#10;M2-UL | Sản phẩm UL"></textarea>
-      <div class="small muted">Mã gồm cấp 2 và cấp 3 (nếu có), nối bằng dấu gạch: <code>M1</code> hoặc <code>M2-TT</code>. Dòng không có mã được xếp vào <code>M1</code>.</div>
-      <div style="margin-top:10px"><button class="btn pink">Lưu khoá học</button></div></form>`;
-    $('#tf').onsubmit = (e) => {
-      e.preventDefault();
-      busy($('#tf button'), async () => {
-        const rows = $('#ts').value.split('\n').map((x) => x.trim()).filter(Boolean).map((ln) => {
-          const i = ln.indexOf('|'); const code = i < 0 ? 'M1' : ln.slice(0, i).trim() || 'M1'; const content = (i < 0 ? ln : ln.slice(i + 1)).trim();
-          const parts = code.split('-').map((x) => x.trim()).filter(Boolean);
-          return { l2: parts[0], l3: parts.slice(1).join('-') || null, content };
-        });
-        if (!rows.length) throw new Error('Cần ít nhất 1 buổi');
-        const mx = $('#tm').value === '' ? null : Number($('#tm').value);
-        const t = await q(db.from('class_types').insert({ name: $('#tn').value.trim().toUpperCase(), description: $('#td').value.trim() || null }).select().single());
-        const l2codes = Array.from(new Set(rows.map((r) => r.l2)));
-        const l2 = await q(db.from('course_nodes').insert(l2codes.map((c, i) => ({ class_type_id: t.id, code: c, sort_no: i + 1, max_absent: mx }))).select());
-        const l3keys = []; rows.forEach((r) => { if (r.l3 && !l3keys.some((k) => k.l2 === r.l2 && k.l3 === r.l3)) l3keys.push({ l2: r.l2, l3: r.l3 }); });
-        const l3 = l3keys.length ? await q(db.from('course_nodes').insert(l3keys.map((k, i) => ({ class_type_id: t.id, parent_id: l2.find((n) => n.code === k.l2).id, code: k.l3, sort_no: i + 1, max_absent: null }))).select()) : [];
-        await q(db.from('class_type_sessions').insert(rows.map((r, i) => ({ class_type_id: t.id, session_no: i + 1, content: r.content,
-          node_id: r.l3 ? l3.find((n) => n.code === r.l3 && n.parent_id === l2.find((x) => x.code === r.l2).id).id : l2.find((n) => n.code === r.l2).id }))));
-        toast('Đã lưu khoá học', 'ok'); render();
+    const openEditor = (t) => { courseEditor($('#newbox'), t, nodes.filter((n) => t && n.class_type_id === t.id), () => render()); $('#newbox').scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+    $$('[data-edit]', el).forEach((b) => { b.onclick = () => openEditor(types.find((x) => x.id === b.dataset.edit)); });
+    courseEditor($('#newbox'), null, [], () => render());
+  }
+
+  // Bảng soạn khoá học: tạo mới hoặc sửa/thêm buổi (khoá đã có: chỉ thêm buổi, không xoá buổi; chỉ áp dụng cho lớp tạo sau)
+  function courseEditor(box, t, tn, done) {
+    const isNew = !t;
+    const byId = (id) => tn.find((n) => n.id === id);
+    let rows; const mx = {};
+    if (isNew) rows = [{ c2: 'M1', c3: '', day: 1, shift: 'sang', counts: true, content: '' }, { c2: 'M1', c3: '', day: 1, shift: 'chieu', counts: true, content: '' }];
+    else {
+      tn.filter((n) => !n.parent_id).forEach((n) => { mx[n.code.toUpperCase()] = n.max_absent; });
+      rows = t.class_type_sessions.slice().sort((a, b) => a.session_no - b.session_no).map((x) => {
+        const n = byId(x.node_id); const par = n && n.parent_id ? byId(n.parent_id) : null;
+        return { id: x.id, session_no: x.session_no, c2: par ? par.code : (n ? n.code : 'M1'), c3: par ? n.code : '', day: x.day_no || '', shift: x.shift || 'sang', counts: x.counts_absent !== false, content: x.content };
       });
+    }
+    box.innerHTML = `<h3>${isNew ? 'Tạo khoá học mới' : 'Sửa khoá ' + esc(t.name)}</h3>
+      ${isNew ? '' : '<p class="small muted">Chỉ áp dụng cho lớp tạo sau này. Buổi đã có không xoá được; muốn thêm buổi hoặc module thì bấm "+ Thêm buổi".</p>'}
+      <div class="cform"><div><label>Mã khoá học (cấp 1)</label><input id="ce-name" placeholder="VD: LPFC-F" value="${isNew ? '' : esc(t.name)}"${isNew ? '' : ' disabled'}></div>
+        <div><label>Mô tả</label><input id="ce-desc" value="${isNew ? '' : esc(t.description || '')}"></div></div>
+      <div class="tbl-wrap"><table class="ctab ced"><thead><tr><th>STT</th><th>Cấp 1</th><th>Cấp 2</th><th>Cấp 3</th><th>Ngày</th><th>Ca</th><th>Nội dung</th><th>Tính vắng</th><th></th></tr></thead><tbody id="ce-body"></tbody></table></div>
+      <div class="row" style="margin-top:8px"><button type="button" class="btn sm ghost" id="ce-add">+ Thêm buổi</button><button type="button" class="btn sm ghost" id="ce-add5">+ Thêm 5 buổi</button></div>
+      <div class="cset" id="ce-set"></div>
+      <div class="row" style="margin-top:12px"><button type="button" class="btn pink" id="ce-save">Lưu khoá học</button>${isNew ? '' : '<button type="button" class="btn ghost" id="ce-cancel">Hủy</button>'}</div>`;
+    const name = () => $('#ce-name', box).value.trim().toUpperCase();
+    const drawRows = () => {
+      $('#ce-body', box).innerHTML = rows.map((r, i) => `<tr data-i="${i}"><td class="n">${i + 1}</td><td class="cd"><span class="ce-n">${esc(name() || '—')}</span></td>
+        <td><input data-f="c2" value="${esc(r.c2)}" style="width:72px"></td><td><input data-f="c3" value="${esc(r.c3)}" style="width:84px" placeholder="—"></td>
+        <td><input data-f="day" type="number" min="1" value="${r.day}" style="width:60px"></td>
+        <td><select data-f="shift"><option value="sang"${r.shift === 'sang' ? ' selected' : ''}>Sáng</option><option value="chieu"${r.shift === 'chieu' ? ' selected' : ''}>Chiều</option></select></td>
+        <td><input data-f="content" value="${esc(r.content)}"></td><td class="n"><input type="checkbox" data-f="counts"${r.counts ? ' checked' : ''} style="width:auto;min-height:0"></td>
+        <td>${r.id ? '' : '<button type="button" class="btn sm ghost" data-rm>✕</button>'}</td></tr>`).join('');
+      drawSet();
     };
+    const drawSet = () => {
+      const keys = []; rows.forEach((r) => { const k = r.c2.trim(); if (k && !keys.some((x) => x.toUpperCase() === k.toUpperCase())) keys.push(k); });
+      $('#ce-set', box).innerHTML = `<b class="small">Cài đặt chung: số buổi được vắng</b><div class="row" style="margin-top:6px">${keys.map((k) => {
+        const v = mx[k.toUpperCase()] === undefined ? 1 : mx[k.toUpperCase()];
+        return `<label class="cset-i">${esc(k)} <input type="number" min="0" data-mx="${esc(k)}" value="${v === null ? '' : v}"></label>`; }).join('') || '<span class="small muted">Nhập cấp 2 ở bảng trên</span>'}</div>`;
+    };
+    $('#ce-name', box).oninput = () => { $$('.ce-n', box).forEach((e) => { e.textContent = name() || '—'; }); };
+    $('#ce-set', box).addEventListener('input', (e) => { const i = e.target; if (i.dataset.mx !== undefined) mx[i.dataset.mx.toUpperCase()] = i.value === '' ? null : Number(i.value); });
+    const tb = $('#ce-body', box);
+    tb.addEventListener('input', (e) => {
+      const el = e.target; const tr = el.closest('tr'); if (!tr || !el.dataset.f) return;
+      rows[+tr.dataset.i][el.dataset.f] = el.type === 'checkbox' ? el.checked : el.value;
+      if (el.dataset.f === 'c2') drawSet();
+    });
+    tb.addEventListener('click', (e) => { const b = e.target.closest('[data-rm]'); if (!b) return; rows.splice(+b.closest('tr').dataset.i, 1); drawRows(); });
+    const addRow = () => {
+      const p = rows[rows.length - 1] || { c2: 'M1', c3: '', day: 1, shift: 'chieu', counts: true };
+      rows.push({ c2: p.c2, c3: '', day: p.shift === 'sang' ? p.day : (Number(p.day) || 0) + 1, shift: p.shift === 'sang' ? 'chieu' : 'sang', counts: true, content: '' });
+    };
+    $('#ce-add', box).onclick = () => { addRow(); drawRows(); };
+    $('#ce-add5', box).onclick = () => { for (let i = 0; i < 5; i++) addRow(); drawRows(); };
+    if ($('#ce-cancel', box)) $('#ce-cancel', box).onclick = () => done();
+    drawRows();
+    $('#ce-save', box).onclick = (e) => busy(e.target, async () => {
+      const nm = name(); if (!nm) throw new Error('Nhập mã khoá học');
+      if (!rows.length) throw new Error('Cần ít nhất 1 buổi');
+      rows.forEach((r, i) => {
+        if (!r.c2.trim()) throw new Error(`Dòng ${i + 1}: thiếu cấp 2 (ví dụ M1)`);
+        if (!r.content.trim()) throw new Error(`Dòng ${i + 1}: thiếu nội dung`);
+        if (!(Number(r.day) >= 1)) throw new Error(`Dòng ${i + 1}: ngày học phải từ 1`);
+      });
+      let course = t;
+      if (isNew) course = await q(db.from('class_types').insert({ name: nm, description: $('#ce-desc', box).value.trim() || null }).select().single());
+      else await q(db.from('class_types').update({ description: $('#ce-desc', box).value.trim() || null }).eq('id', t.id));
+      const cur = await q(db.from('course_nodes').select('*').eq('class_type_id', course.id));
+      const find2 = (c) => cur.find((n) => !n.parent_id && n.code.toUpperCase() === c.trim().toUpperCase());
+      const keys2 = []; rows.forEach((r) => { if (!keys2.some((k) => k.toUpperCase() === r.c2.trim().toUpperCase())) keys2.push(r.c2.trim()); });
+      const new2 = keys2.filter((k) => !find2(k));
+      if (new2.length) cur.push(...await q(db.from('course_nodes').insert(new2.map((k, i) => ({ class_type_id: course.id, code: k, sort_no: cur.filter((n) => !n.parent_id).length + i + 1, max_absent: mx[k.toUpperCase()] === undefined ? 1 : mx[k.toUpperCase()] }))).select()));
+      for (const k of keys2) { const n = find2(k); const v = mx[k.toUpperCase()] === undefined ? 1 : mx[k.toUpperCase()]; if (n.max_absent !== v) await q(db.from('course_nodes').update({ max_absent: v }).eq('id', n.id)); }
+      const find3 = (c2, c3) => cur.find((n) => n.parent_id === find2(c2).id && n.code.toUpperCase() === c3.trim().toUpperCase());
+      const new3 = []; rows.forEach((r) => { const c3 = r.c3.trim(); if (c3 && !find3(r.c2, c3) && !new3.some((x) => x.p === find2(r.c2).id && x.code.toUpperCase() === c3.toUpperCase())) new3.push({ p: find2(r.c2).id, code: c3 }); });
+      if (new3.length) cur.push(...await q(db.from('course_nodes').insert(new3.map((x, i) => ({ class_type_id: course.id, parent_id: x.p, code: x.code, sort_no: cur.filter((n) => n.parent_id === x.p).length + i + 1, max_absent: null }))).select()));
+      const leaf = (r) => (r.c3.trim() ? find3(r.c2, r.c3) : find2(r.c2)).id;
+      let next = Math.max(0, ...rows.filter((r) => r.id).map((r) => r.session_no)) ;
+      for (const r of rows) {
+        const body = { content: r.content.trim(), day_no: Number(r.day), shift: r.shift, counts_absent: !!r.counts, node_id: leaf(r) };
+        if (r.id) await q(db.from('class_type_sessions').update(body).eq('id', r.id));
+        else { next += 1; await q(db.from('class_type_sessions').insert({ ...body, class_type_id: course.id, session_no: next })); }
+      }
+      toast(isNew ? 'Đã lưu khoá học' : 'Đã lưu. Chỉ áp dụng cho lớp tạo sau này', 'ok'); done();
+    });
   }
 
   // ================================================================ ADMIN: nhân sự
