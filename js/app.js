@@ -252,7 +252,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-26';
+  const APP_VERSION = '2026.11.28-27';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -1280,6 +1280,106 @@
   }
 
   // ================================================================ BÁO CÁO
+  // ================================================================ XUẤT EXCEL THEO BIỂU MẪU ASAHI
+  let _exl = null;
+  function loadExcelJS() {
+    if (window.ExcelJS) return Promise.resolve();
+    if (_exl) return _exl;
+    _exl = new Promise((ok, no) => {
+      const sc = document.createElement('script');
+      sc.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+      sc.onload = ok;
+      sc.onerror = () => { _exl = null; no(new Error('Không tải được thư viện xuất Excel. Kiểm tra mạng rồi thử lại')); };
+      document.head.appendChild(sc);
+    });
+    return _exl;
+  }
+  // sheets: [{ name, title, info:[[nhãn, giá trị]], cols:[{header,key,width,align,color(v)->argb}], rows:[{}], total:{key:giá trị}, sign:true }]
+  async function saveXlsx(filename, sheets) {
+    await loadExcelJS();
+    const NAVY = 'FF002F72', GREY = 'FF6B7694', LINE = 'FFD5DBE8', ZEBRA = 'FFF3F6FB', FONT = 'Noto Sans';
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'Asahi Academy · Training Delivery'; wb.created = new Date();
+    const nowVN = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+    const dd = String(nowVN.getDate()).padStart(2, '0'), mm = String(nowVN.getMonth() + 1).padStart(2, '0');
+    const stamp = `${dd}/${mm}/${nowVN.getFullYear()} ${String(nowVN.getHours()).padStart(2, '0')}:${String(nowVN.getMinutes()).padStart(2, '0')}`;
+    for (const sh of sheets) {
+      const n = sh.cols.length;
+      const ws = wb.addWorksheet(sh.name.slice(0, 31), {
+        views: [{ showGridLines: false }],
+        pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+          margins: { left: .4, right: .4, top: .6, bottom: .6, header: .3, footer: .3 } },
+        headerFooter: { oddFooter: '&L&"Noto Sans"&8Asahi Academy · Training Delivery&R&"Noto Sans"&8Trang &P/&N' },
+      });
+      ws.columns = sh.cols.map((c) => ({ width: c.width || 14 }));
+      const mergeRow = (r) => { if (n > 1) ws.mergeCells(r, 1, r, n); };
+      const put = (r, v, font, align, h) => { const c = ws.getCell(r, 1); c.value = v; c.font = { name: FONT, ...font }; c.alignment = { vertical: 'middle', ...align }; mergeRow(r); if (h) ws.getRow(r).height = h; };
+      put(1, 'ASAHI Life', { size: 20, bold: true, color: { argb: NAVY } }, { horizontal: 'left' }, 30);
+      put(2, 'ASAHI ACADEMY · TRAINING DELIVERY', { size: 10, bold: true, color: { argb: GREY } }, { horizontal: 'left' }, 18);
+      for (let i = 1; i <= n; i++) ws.getCell(2, i).border = { bottom: { style: 'medium', color: { argb: NAVY } } };
+      put(4, sh.title.toUpperCase(), { size: 16, bold: true, color: { argb: NAVY } }, { horizontal: 'center' }, 34);
+      let r = 5;
+      (sh.info || []).forEach(([k, v]) => {
+        const c = ws.getCell(r, 1);
+        c.value = { richText: [{ text: k + ': ', font: { name: FONT, size: 10, bold: true, color: { argb: NAVY } } }, { text: String(v), font: { name: FONT, size: 10 } }] };
+        c.alignment = { horizontal: 'left', vertical: 'middle' }; mergeRow(r); r++;
+      });
+      r++;
+      const hr = r;
+      const hrow = ws.getRow(hr); hrow.height = 30;
+      sh.cols.forEach((c, i) => {
+        const cell = hrow.getCell(i + 1);
+        cell.value = c.header;
+        cell.font = { name: FONT, size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: NAVY } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        cell.border = { top: { style: 'thin', color: { argb: NAVY } }, bottom: { style: 'thin', color: { argb: NAVY } }, left: { style: 'thin', color: { argb: 'FF3A5C99' } }, right: { style: 'thin', color: { argb: 'FF3A5C99' } } };
+      });
+      r++;
+      const body = (row, idx, bold) => {
+        const rr = ws.getRow(r);
+        sh.cols.forEach((c, i) => {
+          const cell = rr.getCell(i + 1);
+          const v = c.key === '#' ? (bold ? '' : idx + 1) : row[c.key];
+          cell.value = v === undefined || v === null ? '' : v;
+          const col = c.color && v ? c.color(v) : null;
+          cell.font = { name: FONT, size: 10, bold: !!bold || !!col, ...(col ? { color: { argb: col } } : {}) };
+          cell.alignment = { horizontal: c.align || 'left', vertical: 'middle', wrapText: true };
+          cell.border = { top: { style: 'thin', color: { argb: LINE } }, bottom: { style: 'thin', color: { argb: LINE } }, left: { style: 'thin', color: { argb: LINE } }, right: { style: 'thin', color: { argb: LINE } } };
+          if (bold) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE3EAF6' } };
+          else if (idx % 2 === 1) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ZEBRA } };
+        });
+        rr.height = 22; r++;
+      };
+      sh.rows.forEach((row, i) => body(row, i));
+      if (sh.total) body(sh.total, 0, true);
+      ws.autoFilter = { from: { row: hr, column: 1 }, to: { row: hr, column: n } };
+      ws.views = [{ state: 'frozen', ySplit: hr, showGridLines: false }];
+      ws.pageSetup.printTitlesRow = `${hr}:${hr}`;
+      // Chữ ký
+      r += 1;
+      if (n >= 2) {
+        const mid = Math.max(1, Math.floor(n / 2));
+        const sign = (c1, c2, row, text, font) => { if (c2 > c1) ws.mergeCells(row, c1, row, c2); const c = ws.getCell(row, c1); c.value = text; c.font = { name: FONT, size: 10, ...font }; c.alignment = { horizontal: 'center' }; };
+        sign(mid + 1, n, r, `TP. Hồ Chí Minh, ngày ${dd} tháng ${mm} năm ${nowVN.getFullYear()}`, { italic: true });
+        r++;
+        sign(1, mid, r, 'NGƯỜI LẬP BIỂU', { bold: true, color: { argb: NAVY } });
+        sign(mid + 1, n, r, 'QUẢN LÝ TRAINING DELIVERY', { bold: true, color: { argb: NAVY } });
+        r++;
+        sign(1, mid, r, '(Ký, ghi rõ họ tên)', { italic: true, color: { argb: GREY }, size: 9 });
+        sign(mid + 1, n, r, '(Ký, ghi rõ họ tên)', { italic: true, color: { argb: GREY }, size: 9 });
+        ws.getRow(r + 3).height = 18;
+        const nm = ws.getCell(r + 4, 1); nm.value = `Người lập: ${me.full_name || me.email || ''} · Xuất lúc ${stamp}`;
+        nm.font = { name: FONT, size: 9, italic: true, color: { argb: GREY } }; mergeRow(r + 4);
+      }
+    }
+    const buf = await wb.xlsx.writeBuffer();
+    const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+  const STATUS_COLOR = (v) => (/^Đúng giờ|^Có mặt/.test(v) ? 'FF1B7F4B' : v === 'Muộn' ? 'FFC76A00' : v === 'Vắng' ? 'FFC0392B' : null);
+
   async function viewReports(el) {
     const classes = await q(db.from('classes').select('id, name').order('created_at', { ascending: false }));
     el.innerHTML = `<div class="card" style="max-width:560px"><h2>Xuất báo cáo Excel</h2>
@@ -1329,15 +1429,20 @@
           <div class="tbl-wrap"><table><tr><th>Ngày</th><th>Ca</th><th>Lớp</th><th>Buổi</th><th>Giờ</th></tr>
           ${t.rows.map((r) => `<tr><td>${fmtDate(r.session_date)}</td><td>${SH[r.shift] || ''}</td><td>${esc(r.class_name)}</td><td>${r.session_no}</td><td>${r.hours}</td></tr>`).join('')}</table></div></details>`).join('')}
         <div style="margin-top:12px"><button class="btn ghost" id="thx">Xuất Excel</button></div>`;
-      $('#thx', box).onclick = () => {
-        const sum = list.map((t, i) => ({ 'STT': i + 1, 'Giảng viên': t.name, 'Email': t.rows[0].teacher_email, 'Số buổi': t.rows.length, 'Tổng giờ': t.hours }));
-        sum.push({ 'STT': '', 'Giảng viên': 'TỔNG', 'Email': '', 'Số buổi': data.length, 'Tổng giờ': total });
-        const detail = list.flatMap((t) => t.rows.map((r) => ({ 'Giảng viên': t.name, 'Ngày': fmtDate(r.session_date), 'Ca': SH[r.shift] || '', 'Lớp': r.class_name, 'Buổi': r.session_no, 'Nội dung': r.content || '', 'Giờ': r.hours })));
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sum), 'Tổng hợp');
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail), 'Chi tiết');
-        XLSX.writeFile(wb, `BaoCao_GioDay_${month}.xlsx`);
-      };
+      $('#thx', box).onclick = (e) => busy(e.target, async () => {
+        const sum = list.map((t) => ({ name: t.name, email: t.rows[0].teacher_email, n: t.rows.length, h: t.hours }));
+        const detail = list.flatMap((t) => t.rows.map((r) => ({ name: t.name, date: fmtDate(r.session_date), shift: SH[r.shift] || '', cls: r.class_name, no: r.session_no, content: r.content || '', h: r.hours })));
+        const info = [['Kỳ báo cáo', `Tháng ${month.slice(5)}/${month.slice(0, 4)}`], ['Quy ước giờ dạy', 'Ca sáng 4 giờ · ca chiều 5 giờ · ca tối 5 giờ (chỉ tính buổi đã mở điểm danh)']];
+        await saveXlsx(`BaoCao_GioDay_${month}.xlsx`, [
+          { name: 'Tổng hợp', title: `Báo cáo giờ dạy giảng viên tháng ${month.slice(5)}/${month.slice(0, 4)}`, info, rows: sum, total: { name: 'TỔNG CỘNG', n: data.length, h: total },
+            cols: [{ header: 'STT', key: '#', width: 6, align: 'center' }, { header: 'Giảng viên', key: 'name', width: 30 }, { header: 'Email', key: 'email', width: 34 },
+              { header: 'Số buổi', key: 'n', width: 11, align: 'center' }, { header: 'Tổng giờ', key: 'h', width: 11, align: 'center' }] },
+          { name: 'Chi tiết', title: `Chi tiết giờ dạy tháng ${month.slice(5)}/${month.slice(0, 4)}`, info, rows: detail, total: { name: 'TỔNG CỘNG', h: total },
+            cols: [{ header: 'STT', key: '#', width: 6, align: 'center' }, { header: 'Giảng viên', key: 'name', width: 28 }, { header: 'Ngày dạy', key: 'date', width: 13, align: 'center' },
+              { header: 'Ca', key: 'shift', width: 9, align: 'center' }, { header: 'Lớp', key: 'cls', width: 26 }, { header: 'Buổi', key: 'no', width: 7, align: 'center' },
+              { header: 'Nội dung', key: 'content', width: 30 }, { header: 'Giờ', key: 'h', width: 8, align: 'center' }] },
+        ]);
+      });
     };
     $('#thgo', box).onclick = load;
   }
@@ -1388,11 +1493,25 @@
       return { ...r, 'Tỷ lệ có mặt': opened ? Math.round(((r['Đúng giờ'] + r['Muộn']) / opened) * 100) + '%' : '',
         'Cảnh báo vắng': lim != null && r['Vắng'] > lim ? `Vắng quá ${lim} buổi` : '' };
     });
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail), 'Chi tiết');
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sum), 'Tổng hợp');
+    const names = classes.map((c) => c.name).join(', ');
+    const info = [['Lớp', classes.length > 3 ? `${classes.length} lớp` : names],
+      ['Kỳ báo cáo', from || to ? `${from ? fmtDate(from) : '...'} → ${to ? fmtDate(to) : '...'}` : 'Toàn bộ thời gian'],
+      ['Quy ước', 'Đúng giờ · Muộn · Vắng (chỉ tính các buổi đã mở điểm danh)']];
     const d = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    XLSX.writeFile(wb, `BaoCao_DiemDanh_${d}.xlsx`);
+    await saveXlsx(`BaoCao_DiemDanh_${d}.xlsx`, [
+      { name: 'Tổng hợp', title: 'Báo cáo tổng hợp điểm danh', info, rows: sum,
+        cols: [{ header: 'STT', key: '#', width: 6, align: 'center' }, { header: 'Lớp', key: 'Lớp', width: 24 }, { header: 'Mã HV', key: 'Mã HV', width: 13, align: 'center' },
+          { header: 'Họ và tên', key: 'Họ tên', width: 28 }, { header: 'Chức danh', key: 'Chức danh', width: 20 },
+          { header: 'Đúng giờ', key: 'Đúng giờ', width: 10, align: 'center' }, { header: 'Muộn', key: 'Muộn', width: 9, align: 'center' },
+          { header: 'Vắng', key: 'Vắng', width: 9, align: 'center' }, { header: 'Chưa mở', key: 'Chưa mở', width: 10, align: 'center' },
+          { header: 'Tỷ lệ có mặt', key: 'Tỷ lệ có mặt', width: 12, align: 'center' }, { header: 'Cảnh báo', key: 'Cảnh báo vắng', width: 20 }] },
+      { name: 'Chi tiết', title: 'Chi tiết điểm danh từng buổi', info, rows: detail,
+        cols: [{ header: 'STT', key: '#', width: 6, align: 'center' }, { header: 'Lớp', key: 'Lớp', width: 24 }, { header: 'Loại lớp', key: 'Loại lớp', width: 16 },
+          { header: 'Buổi', key: 'Buổi', width: 7, align: 'center' }, { header: 'Nội dung', key: 'Nội dung', width: 28 }, { header: 'Ngày học', key: 'Ngày học', width: 12, align: 'center' },
+          { header: 'Ca', key: 'Ca', width: 9, align: 'center' }, { header: 'Mã HV', key: 'Mã HV', width: 13, align: 'center' }, { header: 'Họ và tên', key: 'Họ tên', width: 26 },
+          { header: 'Chức danh', key: 'Chức danh', width: 18 }, { header: 'Trạng thái', key: 'Trạng thái', width: 20, color: STATUS_COLOR },
+          { header: 'Giờ điểm danh', key: 'Giờ điểm danh', width: 20, align: 'center' }, { header: 'Hình thức', key: 'Hình thức', width: 20 }] },
+    ]);
     toast('Đã xuất file Excel', 'ok');
   }
 
