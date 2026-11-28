@@ -407,3 +407,7 @@ main, #app { max-width: 100vw; overflow-x: clip; }
 details.more { margin-top: 12px; }
 details.more summary { cursor: pointer; color: var(--navy); font-weight: 600; }
 .sgrid { flex-wrap: wrap; overflow: visible; }
+/* nút dạng liên kết trong dòng bấm được: giữ chữ trắng */
+tr.rowlink a.btn, a.btn { color: #fff; }
+a.btn.ghost { color: var(--navy); }
+a.btn.danger { color: var(--bad); }
