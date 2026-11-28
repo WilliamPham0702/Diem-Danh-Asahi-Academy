@@ -110,6 +110,11 @@
     if (CODE_LEN && /^\d+$/.test(c) && c.length < CODE_LEN) c = c.padStart(CODE_LEN, '0');
     return c;
   }
+  // Họ tên luôn viết hoa chữ cái đầu mỗi từ, bất kể file tải lên viết thế nào
+  function properName(v) {
+    return String(v == null ? '' : v).trim().replace(/\s+/g, ' ').toLocaleLowerCase('vi')
+      .replace(/(^|[\s\-'’.])(\p{L})/gu, (m, a, b) => a + b.toLocaleUpperCase('vi'));
+  }
   const codeToEmail = (code) => code.toLowerCase() + '@' + LOGIN_DOMAIN;
 
   function deviceId() {
@@ -252,7 +257,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-29';
+  const APP_VERSION = '2026.11.28-30';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -700,7 +705,7 @@
       else if (k.includes('quanly') || k.includes('manager')) continue; // không lưu cấp quản lý (kể cả cột gộp "cấp quản lý và chức danh")
       else if (k.includes('chucdanh') || k.includes('chucvu') || k === 'title') out.title = v;
       else if (['mahocvien', 'mahv', 'mshv', 'ma', 'code', 'mahocvien'].includes(k) || k.includes('mahocvien')) out.code = normCode(v);
-      else if (k.includes('tenhocvien') || k.includes('hoten') || k.includes('hovaten') || k === 'ten' || k === 'name' || k === 'fullname') out.full_name = v;
+      else if (k.includes('tenhocvien') || k.includes('hoten') || k.includes('hovaten') || k === 'ten' || k === 'name' || k === 'fullname') out.full_name = properName(v);
     }
     return out;
   }
