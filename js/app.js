@@ -252,7 +252,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-23';
+  const APP_VERSION = '2026.11.28-24';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -534,7 +534,9 @@
         <h2 style="margin:4px 0 6px">Chào mừng ${esc(me.full_name || 'bạn')} đã đến với Asahi Academy</h2>
         <p style="margin:0">${esc(w.text)}</p></div>
       <div id="cl" class="muted center">Đang tải lớp học...</div>`;
+    const box = $('#cl', el);
     const rows = await q(db.rpc('list_open_classes'));
+    if (!box || !box.isConnected) return;
     const fmtRange = (c) => c.first_session ? `${fmtDate(c.first_session)} → ${fmtDate(c.last_session)}` : '(chưa có lịch)';
     const group = (list) => {
       const g = {}; list.forEach((c) => { (g[c.type_name] = g[c.type_name] || []).push(c); });
@@ -549,7 +551,7 @@
       ${isOpen ? `<button class="btn pink sm" data-reg="${c.id}">Đăng ký</button>` : '<span class="badge ok">Đã tham gia</span>'}</div>`;
     const section = (title, list, isOpen, empty) => `<div class="card"><h3>${title}</h3>${list.length ? group(list).map(([k, items]) =>
       `<div class="cl-type">${esc(k)}</div>${items.map((c) => card(c, isOpen)).join('')}`).join('') : `<p class="muted">${empty}</p>`}</div>`;
-    $('#cl').outerHTML = section('Lớp học của bạn', joined, false, 'Bạn chưa tham gia lớp nào.')
+    box.outerHTML = section('Lớp học của bạn', joined, false, 'Bạn chưa tham gia lớp nào.')
       + section('Lớp đang mở đăng ký', open, true, 'Hiện chưa có lớp nào mở đăng ký.');
     $$('[data-reg]', el).forEach((b) => { b.onclick = () => {
       const c = rows.find((x) => x.id === b.dataset.reg);
@@ -881,16 +883,16 @@
       <div class="card"><h3>Học viên (${total})</h3>
         <div class="small muted" style="margin-bottom:6px"><span class="sc ok inl">✓</span> đúng giờ &nbsp;<span class="sc late inl">M</span> muộn &nbsp;<span class="sc abs inl">V</span> vắng &nbsp;<span class="sc none inl">·</span> chưa học &nbsp;(kéo ngang để xem các buổi sau)</div>
         <div class="tbl-wrap"><table>
-          <tr><th>Mã</th><th>Họ tên</th><th>Chức danh</th><th>Có mặt</th><th>Vắng</th><th>Từng buổi</th><th></th></tr>
+          <tr><th>Mã</th><th>Họ tên</th><th>Chức danh</th><th>Có mặt</th><th>Vắng</th><th></th><th>Từng buổi</th></tr>
           ${roster.map((r) => { const s = r.students || {}; return `<tr>
             <td>${esc(r.student_code)}</td><td>${esc(s.full_name)}</td>
             <td>${esc(s.title)}</td>
             <td>${perStudent[r.student_code] || 0}/${sessions.length}</td>
             <td>${absent[r.student_code] > 0 ? `<span class="badge ${maxAbsent != null && absent[r.student_code] > maxAbsent ? 'bad' : 'gray'}">${absent[r.student_code]}</span>` : '0'}</td>
-            <td>${sessGrid(sessions, attMap, r.student_code)}</td>
             <td class="act">${hasDevice.has(r.student_code) ? `<button class="btn sm ghost" data-reset="${esc(r.student_code)}">Đặt lại thiết bị</button>` : ''}
               <button class="btn sm ghost" data-resetpw="${esc(r.student_code)}">Đặt lại MK</button>
-              <button class="btn sm danger" data-rm="${esc(r.student_code)}">Xóa</button></td></tr>`; }).join('')}
+              <button class="btn sm danger" data-rm="${esc(r.student_code)}">Xóa</button></td>
+            <td>${sessGrid(sessions, attMap, r.student_code)}</td></tr>`; }).join('')}
         </table></div></div>`;
 
     $('#loc').onchange = () => busy(null, async () => { await q(db.from('classes').update({ location: $('#loc').value.trim() || null }).eq('id', id)); toast('Đã lưu địa điểm', 'ok'); });
