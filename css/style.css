@@ -411,3 +411,21 @@ details.more summary { cursor: pointer; color: var(--navy); font-weight: 600; }
 tr.rowlink a.btn, a.btn { color: #fff; }
 a.btn.ghost { color: var(--navy); }
 a.btn.danger { color: var(--bad); }
+/* mỗi buổi học 1 dòng (màn rộng); màn hẹp xếp 2 cột */
+.srow { display: grid; grid-template-columns: minmax(0,1.6fr) minmax(0,150px) minmax(0,1.2fr) auto; gap: 8px 10px; align-items: center;
+  padding: 8px 10px; margin-top: 6px; border-radius: 12px; background: rgba(255,255,255,.7); border: 1px solid rgba(0,47,114,.08); }
+.srow > div { min-width: 0; }
+.srow input[type=date], .srow select { width: 100%; max-width: 100%; padding: 7px 8px; }
+.srow.shead { background: transparent; border: 0; padding-top: 4px; padding-bottom: 0; font-size: 12px; font-weight: 700; color: var(--navy); text-transform: uppercase; letter-spacing: .3px; }
+.s-main { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: center; }
+.s-ct { flex: 1 1 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s-act { display: flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: nowrap; white-space: nowrap; }
+.s-act .btn { white-space: nowrap; }
+@media (max-width: 760px) {
+  .srow { grid-template-columns: minmax(0,1fr) minmax(0,1fr); }
+  .srow.shead { display: none; }
+  .s-main { grid-column: 1 / -1; }
+  .s-ct { white-space: normal; }
+  .s-act { grid-column: 1 / -1; justify-content: space-between; flex-wrap: wrap; }
+}
+.srow.shead > div { text-align: left; }

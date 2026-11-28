@@ -267,7 +267,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-34';
+  const APP_VERSION = '2026.11.28-35';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -957,14 +957,15 @@
         <div class="small">${warned.map((r) => `<b>${esc(r.students?.full_name || r.student_code)}</b> (${esc(r.student_code)}): vắng ${absent[r.student_code]} buổi`).join('<br>')}</div></div>` : ''}
       <div class="card"><h3>Các buổi học</h3>
         <div class="small muted">Muốn điểm danh tay hoặc hủy điểm danh: bấm <b>Chi tiết</b> ở buổi tương ứng.</div>
-        ${sessions.map((s) => `<div class="scard">
-          <div class="row between"><b>Buổi ${s.session_no}${s.shift ? ' · ' + SHIFT_LABEL[s.shift] : ''}</b>
-            ${s.closed ? '<span class="badge gray">Đã đóng</span>' : s.opened_at ? '<span class="badge ok">Đã mở</span>' : '<span class="badge warn">Chưa mở</span>'}</div>
-          <div class="small">${esc(s.content || '')}</div>
-          <div class="grid2"><div><label>Ngày học</label><input type="date" value="${s.session_date || ''}" data-date="${s.id}"></div>
-            <div><label>Giảng viên dạy</label><select data-teacher="${s.id}"><option value="">(Chưa gán)</option>${teachers.map((t) => `<option value="${esc(t.email)}"${t.email === String(s.teacher_email || '').toLowerCase() ? ' selected' : ''}>${esc(t.full_name || t.email)}${t.has_account ? '' : ' (chưa tạo TK)'}</option>`).join('')}</select></div></div>
-          <div class="row between" style="margin-top:8px"><span class="small">Có mặt <b>${perSession[s.id] || 0}/${total}</b></span>
-            <span class="pi-act">${ended ? '' : qrButtons(s, true)} <a class="btn sm" href="#/session/${s.id}">Chi tiết</a></span></div></div>`).join('')}
+        <div class="srow shead"><div>Buổi học</div><div>Ngày học</div><div>Giảng viên dạy</div><div>Có mặt / thao tác</div></div>
+        ${sessions.map((s) => `<div class="srow">
+          <div class="s-main"><b>Buổi ${s.session_no}${s.shift ? ' · ' + SHIFT_LABEL[s.shift] : ''}</b>
+            ${s.closed ? '<span class="badge gray">Đã đóng</span>' : s.opened_at ? '<span class="badge ok">Đã mở</span>' : '<span class="badge warn">Chưa mở</span>'}
+            <div class="small muted s-ct">${esc(s.content || '')}</div></div>
+          <div><input type="date" value="${s.session_date || ''}" data-date="${s.id}"></div>
+          <div><select data-teacher="${s.id}"><option value="">(Chưa gán)</option>${teachers.map((t) => `<option value="${esc(t.email)}"${t.email === String(s.teacher_email || '').toLowerCase() ? ' selected' : ''}>${esc(t.full_name || t.email)}${t.has_account ? '' : ' (chưa tạo TK)'}</option>`).join('')}</select></div>
+          <div class="s-act"><span class="small"><b>${perSession[s.id] || 0}/${total}</b></span>
+            ${ended ? '' : qrButtons(s, true)} <a class="btn sm" href="#/session/${s.id}">Chi tiết</a></div></div>`).join('')}
       </div>
       <div class="card"><h3>Học viên (${total})</h3>
         <div class="small muted" style="margin-bottom:6px"><span class="sc ok inl">✓</span> đúng giờ &nbsp;<span class="sc late inl">M</span> muộn &nbsp;<span class="sc abs inl">V</span> vắng &nbsp;<span class="sc none inl">·</span> chưa học</div>
