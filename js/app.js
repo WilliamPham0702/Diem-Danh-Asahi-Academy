@@ -282,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-47';
+  const APP_VERSION = '2026.11.28-48';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -862,19 +862,38 @@
     const p = n.parent_id ? all.find((x) => x.id === n.parent_id) : null;
     return [courseName, p && p.code, n.code].filter(Boolean).join('-');
   }
-  // Hai ô chọn nối tiếp: cấp 2 (module) -> cấp 3 (nhóm, nếu có). Kết quả: null = học tất cả module
-  function renderNodePicker(m, courseNodes) {
+  // học viên thuộc nodeIds (null = tất cả) có học buổi thuộc node này không
+  function inNodes(nodeIds, nodeId, courseNodes) {
+    if (!nodeIds || !nodeIds.length) return true;
+    if (!nodeId) return false;
+    const n = courseNodes.find((x) => x.id === nodeId);
+    return nodeIds.includes(nodeId) || !!(n && n.parent_id && nodeIds.includes(n.parent_id));
+  }
+  const rangeText = (nums) => { const a = nums.slice().sort((x, y) => x - y); const out = []; let i = 0;
+    while (i < a.length) { let j = i; while (j + 1 < a.length && a[j + 1] === a[j] + 1) j++; out.push(j > i ? `${a[i]}–${a[j]}` : `${a[i]}`); i = j + 1; } return out.join(', '); };
+  function sessionSummary(nodeIds, sessions, courseNodes) {
+    const mine = sessions.filter((x) => inNodes(nodeIds, x.node_id, courseNodes));
+    const free = mine.filter((x) => x.counts_absent === false);
+    if (!mine.length) return 'Chưa có buổi nào thuộc lựa chọn này';
+    return `Học <b>${mine.length}</b> buổi (buổi ${rangeText(mine.map((x) => x.session_no))})` + (free.length ? `, trong đó ${free.length} buổi không tính vắng (buổi ${rangeText(free.map((x) => x.session_no))})` : '');
+  }
+  // Ba ô chọn nối tiếp: cấp 1 (khoá, cố định) -> cấp 2 (module) -> cấp 3 (nhóm). "Tất cả" ở trên đầu mỗi ô.
+  function renderNodePicker(m, courseNodes, courseName, sessions) {
     const box = $('#npbox', m); if (!box) return;
     const l2 = courseNodes.filter((n) => !n.parent_id);
     if (!l2.length) { box.innerHTML = ''; return; }
-    box.innerHTML = `<div class="grid2"><div><label>Cấp 2: module</label><select id="np2"><option value="">Tất cả module</option>
-      ${l2.map((n) => `<option value="${n.id}">${esc(n.code)}</option>`).join('')}</select></div>
-      <div id="np3w" style="display:none"><label>Cấp 3: nhóm</label><select id="np3"></select></div></div>`;
+    box.innerHTML = `<div class="cform"><div><label>Cấp 1: khoá học</label><select id="np1" disabled><option>${esc(courseName || '')}</option></select></div>
+      <div><label>Cấp 2: module</label><select id="np2"><option value="">Tất cả</option>${l2.map((n) => `<option value="${n.id}">${esc((courseName || '') + '-' + n.code)}</option>`).join('')}</select></div>
+      <div class="f-full"><label>Cấp 3: nhóm</label><select id="np3" disabled><option value="">Tất cả</option></select></div></div>
+      <div class="small npsum" id="npsum"></div>`;
+    const sum = () => { $('#npsum', m).innerHTML = sessionSummary(nodePickerValue(m), sessions || [], courseNodes); };
     $('#np2', m).onchange = () => {
-      const kids = courseNodes.filter((n) => n.parent_id === $('#np2', m).value);
-      $('#np3w', m).style.display = kids.length ? '' : 'none';
-      $('#np3', m).innerHTML = '<option value="">Tất cả nhóm</option>' + kids.map((n) => `<option value="${n.id}">${esc(n.code)}</option>`).join('');
+      const par = l2.find((n) => n.id === $('#np2', m).value);
+      const kids = par ? courseNodes.filter((n) => n.parent_id === par.id) : [];
+      $('#np3', m).innerHTML = '<option value="">Tất cả</option>' + kids.map((n) => `<option value="${n.id}">${esc((courseName || '') + '-' + par.code + '-' + n.code)}</option>`).join('');
+      $('#np3', m).disabled = !kids.length; sum();
     };
+    $('#np3', m).onchange = sum; sum();
   }
   function nodePickerValue(m) {
     const a = $('#np2', m); if (!a || !a.value) return null;
@@ -917,7 +936,7 @@
 
   async function openCreateClass() {
     const types = await q(db.from('class_types').select('id, name, class_type_sessions(count)').order('name'));
-    const sessList = await q(db.from('class_type_sessions').select('class_type_id, day_no'));
+    const sessList = await q(db.from('class_type_sessions').select('class_type_id, day_no, session_no, node_id, counts_absent'));
     if (!types.length) { toast('Chưa có khoá học nào. Admin cần tạo khoá học trước.', 'err'); return; }
     const allNodes = await loadNodes();
     const today = new Date().toISOString().slice(0, 10);
@@ -957,7 +976,8 @@
         $('#cg', m).value = iso(d);
       }
       $('#cg', m).onchange = () => { gradTouched = true; };
-      const drawNP = () => renderNodePicker(m, allNodes.filter((n) => n.class_type_id === $('#ct', m).value));
+      const drawNP = () => { const tid = $('#ct', m).value; const ty = types.find((x) => x.id === tid);
+        renderNodePicker(m, allNodes.filter((n) => n.class_type_id === tid), ty && ty.name, sessList.filter((x) => x.class_type_id === tid)); };
       $('#cd', m).onchange = autoGrad; $('#ct', m).onchange = () => { autoGrad(); drawNP(); }; autoGrad(); drawNP();
       $('#cf', m).onsubmit = (e) => {
         e.preventDefault();
@@ -1068,7 +1088,7 @@
           ${roster.map((r) => { const s = r.students || {}; return `<div class="trow">
             <div class="t-main"><b>${esc(s.full_name || r.student_code)}</b>
               <div class="small muted">${esc(r.student_code)}${s.title ? ' · ' + esc(s.title) : ''}</div>
-              ${cnodes.length ? `<div class="pi-st">${nodeTags(r.node_ids, cnodes)} ${ended ? '' : `<a href="#" data-nodes="${esc(r.student_code)}" class="small">Đổi module</a>`}</div>` : ''}</div>
+              ${cnodes.length ? `<div class="pi-st">${nodeTags(r.node_ids, cnodes)} <span class="small muted">${sessions.filter((x) => inNodes(r.node_ids, x.node_id, cnodes)).length} buổi</span> ${ended ? '' : `<a href="#" data-nodes="${esc(r.student_code)}" class="small">Đổi module</a>`}</div>` : ''}</div>
             <div class="small">Có mặt <b>${perStudent[r.student_code] || 0}/${sessions.length}</b><br>Vắng ${absent[r.student_code] > 0 ? `<span class="badge ${maxAbsent != null && absent[r.student_code] > maxAbsent ? 'bad' : 'gray'}">${absent[r.student_code]}</span>` : '<b>0</b>'}</div>
             <div>${sessGrid(sessions, attMap, r.student_code, !ended)}</div>
             <div class="t-act">${hasDevice.has(r.student_code) ? `<button class="btn sm ghost" data-reset="${esc(r.student_code)}">Đặt lại thiết bị</button>` : ''}
@@ -1171,11 +1191,12 @@
     const sel = new Set(); let all = []; let inClass = new Set();
     modal(`<h2>Thêm học viên vào lớp</h2>
       <form id="af">
+        <div class="small muted">Chọn học viên học phần nào của khoá trước, rồi chọn học viên hoặc đính kèm file.</div>
+        <div id="npbox"></div>
         <label>Tìm học viên trong hệ thống (mã hoặc họ tên)</label>
         <input id="as" placeholder="Gõ mã hoặc tên rồi chọn..." autocomplete="off">
         <div class="chips" id="achips"></div>
         <div class="pick" id="alist"><div class="small muted" style="padding:10px">Đang tải danh sách...</div></div>
-        <div id="npbox"></div>
         <details class="more"><summary>Hoặc thêm bằng file Excel / dán danh sách mã</summary>
           <label>File Excel danh sách</label><input id="ax" type="file" accept=".xlsx,.xls,.csv">
           <div class="small muted"><a href="#" id="tpl">Tải file mẫu</a></div>
@@ -1200,8 +1221,10 @@
           : '<div class="small muted" style="padding:10px">Không tìm thấy học viên nào.</div>';
         $$('[data-c]', m).forEach((cb) => { cb.onchange = () => { if (cb.checked) sel.add(cb.dataset.c); else sel.delete(cb.dataset.c); drawChips(); }; });
       };
-      q(db.from('classes').select('class_type_id').eq('id', classId).single()).then(async (c) => {
-        const ns = (await loadNodes()).filter((n) => n.class_type_id === c.class_type_id); renderNodePicker(m, ns); }).catch(() => {});
+      q(db.from('classes').select('class_type_id, class_types(name)').eq('id', classId).single()).then(async (c) => {
+        const ns = (await loadNodes()).filter((n) => n.class_type_id === c.class_type_id);
+        const ss = await q(db.from('class_sessions').select('session_no, node_id, counts_absent').eq('class_id', classId));
+        renderNodePicker(m, ns, c.class_types && c.class_types.name, ss); }).catch(() => {});
       Promise.all([
         fetchAll(() => db.from('students').select('code, full_name, title').order('full_name').order('code')),
         q(db.from('class_students').select('student_code').eq('class_id', classId)),

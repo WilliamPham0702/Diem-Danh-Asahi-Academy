@@ -515,3 +515,6 @@ table.ced { min-width: 860px; }
 table.ced td { vertical-align: middle; }
 table.ced input:not([type=checkbox]), table.ced select { min-height: 34px; padding: 3px 6px; width: 100%; }
 table.ced td.ct, table.ced td:nth-child(7) { min-width: 220px; }
+
+/* ===== v48: chọn cấp khi thêm học viên ===== */
+.npsum { margin: 4px 0 6px; padding: 6px 10px; background: #eef2fa; border-radius: 8px; color: var(--navy); }
