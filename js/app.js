@@ -282,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-44';
+  const APP_VERSION = '2026.11.28-45';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -1932,14 +1932,14 @@
       const info = ss.map((x) => { const n = tn.find((y) => y.id === x.node_id); const par = n && n.parent_id ? tn.find((y) => y.id === n.parent_id) : null;
         return { x, c2: par ? par.code : (n ? n.code : ''), c3: par ? n.code : '' }; });
       const span = (i) => { let k = 1; while (i + k < info.length && info[i + k].c2 === info[i].c2) k++; return k; };
-      const rows = info.map((r, i) => `<tr><td class="n">${r.x.session_no}</td>${i === 0 ? `<td rowspan="${info.length}" class="c1">${esc(t.name)}</td>` : ''}
+      const rows = info.map((r, i) => `<tr><td class="n">Buổi ${r.x.session_no}</td>${i === 0 ? `<td rowspan="${info.length}" class="c1">${esc(t.name)}</td>` : ''}
         ${i === 0 || info[i - 1].c2 !== r.c2 ? `<td rowspan="${span(i)}" class="c2">${esc(r.c2 || '—')}</td>` : ''}
         <td class="c3">${esc(r.c3 || '—')}</td>
-        <td>${r.x.day_no ? `<b>Ngày ${r.x.day_no}${r.x.shift ? ' ' + SHIFT_LABEL[r.x.shift] : ''}:</b> ` : ''}${esc(r.x.content)}</td></tr>`).join('');
+        <td>${esc(r.x.content)}</td></tr>`).join('');
       return `<div style="border-top:1px solid var(--line);padding:10px 0">
         <div class="row between"><b>${esc(t.name)}</b> <span><span class="badge">${ss.length} buổi</span> <button class="btn sm danger" data-del="${t.id}">Xóa</button></span></div>
         <div class="muted small">${esc(t.description || '')}</div>
-        <div class="tbl-wrap"><table class="ctab"><tr><th>STT</th><th>Cấp 1</th><th>Cấp 2</th><th>Cấp 3</th><th>Nội dung</th></tr>${rows}</table></div>
+        <div class="tbl-wrap"><table class="ctab"><tr><th>Buổi</th><th>Cấp 1</th><th>Cấp 2</th><th>Cấp 3</th><th>Nội dung</th></tr>${rows}</table></div>
         <div class="cset"><b class="small">Cài đặt chung: số buổi được vắng</b>
           <div class="row" style="margin-top:6px">${l2.map((n) => `<label class="cset-i">${esc(n.code)} <input type="number" min="0" value="${n.max_absent ?? ''}" data-mx="${n.id}"></label>`).join('')}</div></div></div>`; }).join('')
       : '<p class="muted">Chưa có khoá học nào.</p>';
