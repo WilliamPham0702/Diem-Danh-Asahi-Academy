@@ -1106,3 +1106,17 @@ revoke all on function public.add_class_students(uuid, text[], uuid[]), public.s
   public.create_class(text, uuid, date, text[], date, uuid[]) from public, anon;
 grant execute on function public.add_class_students(uuid, text[], uuid[]), public.set_student_nodes(uuid, text, uuid[]),
   public.create_class(text, uuid, date, text[], date, uuid[]) to authenticated;
+
+-- v46: cap 3 cua LPFC-P (M2): TT, CS, VH, UL, EPOS, ACTIVE tuong ung buoi 9-14
+do $$
+declare t uuid; m2 uuid; n uuid; i int; codes text[] := array['TT','CS','VH','UL','EPOS','ACTIVE'];
+begin
+  select id into t from public.class_types where name = 'LPFC-P';
+  select id into m2 from public.course_nodes where class_type_id = t and code = 'M2' and parent_id is null;
+  if t is null or m2 is null or exists (select 1 from public.course_nodes where parent_id = m2) then return; end if;
+  for i in 1..6 loop
+    insert into public.course_nodes (class_type_id, parent_id, code, sort_no, max_absent) values (t, m2, codes[i], i, null) returning id into n;
+    update public.class_type_sessions set node_id = n where class_type_id = t and session_no = 8 + i;
+    update public.class_sessions cs set node_id = n from public.classes c where cs.class_id = c.id and c.class_type_id = t and cs.session_no = 8 + i;
+  end loop;
+end $$;
