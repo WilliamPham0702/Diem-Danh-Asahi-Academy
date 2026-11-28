@@ -282,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-56';
+  const APP_VERSION = '2026.11.28-57';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -1086,19 +1086,20 @@
         <details${over.length ? ' open' : ''}><summary><b>⚠ Cảnh báo vắng:</b> ${over.length ? `<span class="badge bad">${over.length} vượt</span> ` : ''}${full.length ? `<span class="badge warn">${full.length} hết lượt</span>` : ''}</summary>
         <div class="small" style="margin-top:6px">${over.map((r) => `<a href="#" data-goto="${esc(r.student_code)}"><b>${esc(r.students?.full_name || r.student_code)}</b></a> · vượt ${modTxt(r, 2)}`).concat(full.map((r) => `<a href="#" data-goto="${esc(r.student_code)}">${esc(r.students?.full_name || r.student_code)}</a> · hết lượt ${modTxt(r, 1)}`)).join('<br>')}</div></details></div>` : ''}
       <div class="card"><h3>Các buổi học</h3>
-        <div class="small muted">Muốn điểm danh tay hoặc hủy điểm danh: bấm <b>Chi tiết</b> ở buổi tương ứng.</div>
-        <div class="srow shead"><div>Buổi học</div><div>Ngày học</div><div>Giảng viên dạy</div><div>Trợ giảng</div><div>Có mặt / thao tác</div></div>
-        ${sessions.map((s) => `<div class="srow">
-          <div class="s-main"><b>Buổi ${s.session_no}${s.shift ? ' · ' + SHIFT_LABEL[s.shift] : ''}</b>
-            ${s.closed ? '<span class="badge gray">Đã đóng</span>' : s.opened_at ? '<span class="badge ok">Đã mở</span>' : '<span class="badge warn">Chưa mở</span>'}
-            ${!s.teacher_email && !s.ta_email ? '<span class="badge bad" title="Buổi cần có giảng viên hoặc trợ giảng">Chưa phân công</span>' : ''}
-            <div class="small muted s-ct">${nodeOfSession(s) ? `<span class="badge">${esc(nodeOfSession(s))}</span> ` : ''}${esc(s.content || '')}</div></div>
-          <div><input type="date" value="${s.session_date || ''}" data-date="${s.id}"></div>
-          <div><select data-teacher="${s.id}"><option value="">(Chưa gán)</option>${teachers.map((t) => `<option value="${esc(t.email)}"${t.email === String(s.teacher_email || '').toLowerCase() ? ' selected' : ''}>${esc(t.full_name || t.email)}${t.has_account ? '' : ' (chưa tạo TK)'}</option>`).join('')}</select></div>
-          <div><select data-ta="${s.id}"${classTA && !ended ? '' : ' disabled'}><option value="">${classTA ? '(Không có trợ giảng)' : '(Lớp chưa có trợ giảng)'}</option>
-            ${classTA ? `<option value="${esc(classTA)}"${String(s.ta_email || '').toLowerCase() === classTA ? ' selected' : ''}>${esc(taName(classTA))}</option>` : ''}</select></div>
-          <div class="s-act"><span class="small"><b>${perSession[s.id] || 0}/${perTotal[s.id]}</b></span>
-            ${ended ? '' : qrButtons(s, true)} <a class="btn sm" href="#/session/${s.id}">Chi tiết</a></div></div>`).join('')}
+        <div class="small muted">Chọn ngày, ca, giảng viên, trợ giảng ngay trên bảng. Muốn điểm danh tay hoặc hủy điểm danh: bấm <b>Chi tiết</b>. Ca chỉ đổi được khi buổi chưa mở QR.</div>
+        <div class="tbl-wrap"><table class="ctab stab">
+          <thead><tr><th>STT</th><th>Buổi</th><th>Ngày</th><th>Ca</th><th>GV</th><th>TG</th><th>Trạng thái</th><th>Có mặt</th><th></th></tr></thead>
+          <tbody>${sessions.map((s, i) => `<tr>
+            <td class="n">${i + 1}</td>
+            <td class="s-bc"><b>Buổi ${s.session_no}</b>${nodeOfSession(s) ? ` <span class="badge">${esc(nodeOfSession(s))}</span>` : ''}<div class="small muted s-ct">${esc(s.content || '')}</div></td>
+            <td><input type="date" value="${s.session_date || ''}" data-date="${s.id}"></td>
+            <td><select data-shift="${s.id}"${ended || s.opened_at ? ' disabled' : ''}><option value=""${s.shift ? '' : ' selected'}>Chọn ca</option>${Object.keys(SHIFT_LABEL).map((k) => `<option value="${k}"${s.shift === k ? ' selected' : ''}>${SHIFT_LABEL[k]}</option>`).join('')}</select></td>
+            <td><select data-teacher="${s.id}"><option value="">(Chưa gán)</option>${teachers.map((t) => `<option value="${esc(t.email)}"${t.email === String(s.teacher_email || '').toLowerCase() ? ' selected' : ''}>${esc(t.full_name || t.email)}${t.has_account ? '' : ' (chưa tạo TK)'}</option>`).join('')}</select></td>
+            <td><select data-ta="${s.id}"${classTA && !ended ? '' : ' disabled'}><option value="">${classTA ? '(Không có)' : '(Lớp chưa có TG)'}</option>
+              ${classTA ? `<option value="${esc(classTA)}"${String(s.ta_email || '').toLowerCase() === classTA ? ' selected' : ''}>${esc(taName(classTA))}</option>` : ''}</select></td>
+            <td>${s.closed ? '<span class="badge gray">Đã đóng</span>' : s.opened_at ? '<span class="badge ok">Đã mở</span>' : '<span class="badge warn">Chưa mở</span>'}${!s.teacher_email && !s.ta_email ? ' <span class="badge bad" title="Buổi cần có giảng viên hoặc trợ giảng">Chưa phân công</span>' : ''}</td>
+            <td class="n"><b>${perSession[s.id] || 0}/${perTotal[s.id]}</b></td>
+            <td class="s-act">${ended ? '' : qrButtons(s, true)} <a class="btn sm" href="#/session/${s.id}">Chi tiết</a></td></tr>`).join('')}</tbody></table></div>
       </div>
       <div class="card"><div class="row between"><h3 style="margin:0">Học viên (${total})</h3><button class="btn pink sm" id="add">+ Thêm học viên / up danh sách</button></div>
         <div class="small muted" style="margin-bottom:6px"><span class="sc ok inl">✓</span> đúng giờ &nbsp;<span class="sc late inl">M</span> muộn &nbsp;<span class="sc abs inl">V</span> vắng &nbsp;<span class="sc none inl">·</span> chưa học</div>
@@ -1172,6 +1173,8 @@
     };
     $$('[data-date]', el).forEach((i) => { i.onchange = () => busy(null, async () => {
       await q(db.from('class_sessions').update({ session_date: i.value || null }).eq('id', i.dataset.date)); toast('Đã lưu ngày học', 'ok'); }); });
+    $$('[data-shift]', el).forEach((sel) => { sel.onchange = () => busy(null, async () => {
+      await q(db.from('class_sessions').update({ shift: sel.value || null }).eq('id', sel.dataset.shift)); toast('Đã đổi ca học', 'ok'); render(); }); });
     $$('[data-ta]', el).forEach((sel) => { sel.onchange = () => busy(null, async () => {
       await q(db.from('class_sessions').update({ ta_email: sel.value || null }).eq('id', sel.dataset.ta));
       toast(sel.value ? 'Đã gán trợ giảng cho buổi' : 'Đã bỏ trợ giảng khỏi buổi', 'ok'); render(); }); });
@@ -1285,7 +1288,7 @@
     });
   }
 
-  const SHIFT_LABEL = { sang: 'Sáng', chieu: 'Chiều' };
+  const SHIFT_LABEL = { sang: 'Sáng', chieu: 'Chiều', toi: 'Tối' };
   // Số buổi vắng = buổi đã mở điểm danh mà học viên không có bản ghi nào (buổi Thi MOF không tính)
   // Ô trạng thái từng buổi của 1 học viên: ✓ đúng giờ (xanh) / M muộn (cam) / V vắng (đỏ) / · chưa học
   function sessGrid(sessions, attMap, code, editable, inScope) {
@@ -2044,7 +2047,7 @@
       $('#ce-body', box).innerHTML = rows.map((r, i) => `<tr data-i="${i}"><td class="n">${i + 1}</td><td class="cd"><span class="ce-n">${esc(name() || '—')}</span></td>
         <td><input data-f="c2" value="${esc(r.c2)}" style="width:72px"></td><td><input data-f="c3" value="${esc(r.c3)}" style="width:84px" placeholder="—"></td>
         <td><input data-f="day" type="number" min="1" value="${r.day}" style="width:60px"></td>
-        <td><select data-f="shift"><option value="sang"${r.shift === 'sang' ? ' selected' : ''}>Sáng</option><option value="chieu"${r.shift === 'chieu' ? ' selected' : ''}>Chiều</option></select></td>
+        <td><select data-f="shift"><option value="sang"${r.shift === 'sang' ? ' selected' : ''}>Sáng</option><option value="chieu"${r.shift === 'chieu' ? ' selected' : ''}>Chiều</option><option value="toi"${r.shift === 'toi' ? ' selected' : ''}>Tối</option></select></td>
         <td><input data-f="content" value="${esc(r.content)}"></td><td class="n"><input type="checkbox" data-f="counts"${r.counts ? ' checked' : ''} style="width:auto;min-height:0"></td>
         <td>${r.id ? '' : '<button type="button" class="btn sm ghost" data-rm>✕</button>'}</td></tr>`).join('');
       drawSet();

@@ -1190,3 +1190,9 @@ from (select class_id, count(*) tot, count(*) filter (where att) att from base g
 $$;
 revoke all on function public.my_absences() from public, anon;
 grant execute on function public.my_absences() to authenticated;
+
+-- v57: thêm ca Tối cho buổi học
+alter table public.class_type_sessions drop constraint if exists class_type_sessions_shift_check;
+alter table public.class_type_sessions add constraint class_type_sessions_shift_check check (shift in ('sang','chieu','toi'));
+alter table public.class_sessions drop constraint if exists class_sessions_shift_check;
+alter table public.class_sessions add constraint class_sessions_shift_check check (shift in ('sang','chieu','toi'));
