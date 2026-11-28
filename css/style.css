@@ -451,3 +451,15 @@ button.sc:active { transform: scale(.94); }
 @media (max-width: 900px) { .trow { grid-template-columns: minmax(0,1fr) auto; } }
 .trow.rrow { grid-template-columns: minmax(0,1.1fr) minmax(0,1.3fr) auto; }
 @media (max-width: 900px) { .trow.rrow { grid-template-columns: minmax(0,1fr); } .trow.rrow .t-act { justify-content: flex-start; } }
+
+/* ===== v38: trang Báo cáo gọn: 1 thẻ, chọn loại báo cáo ===== */
+.rep { max-width: 860px; }
+.rep .seg { margin: 8px 0 14px; }
+.rgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 14px; }
+.rgrid > div { min-width: 0; }
+.rgrid .rfull { grid-column: 1 / -1; }
+.rgrid select, .rgrid input { width: 100%; min-height: 42px; }
+.ract { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 560px) { .rgrid { grid-template-columns: minmax(0, 1fr); } .ract .btn { width: 100%; } }
+input[type="date"], input[type="month"] { min-height: 42px; background: #fff; text-align: left; }
+input[type="date"]::-webkit-date-and-time-value, input[type="month"]::-webkit-date-and-time-value { text-align: left; }

@@ -267,7 +267,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-37';
+  const APP_VERSION = '2026.11.28-38';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -1568,33 +1568,47 @@
 
   async function viewReports(el) {
     const classes = await q(db.from('classes').select('id, name').order('created_at', { ascending: false }));
-    el.innerHTML = `<div class="card" style="max-width:560px"><h2>Xuất báo cáo Excel</h2>
-      <p class="muted small">File gồm 2 trang: "Chi tiết" (từng học viên, từng buổi) và "Tổng hợp" (số buổi đúng giờ, muộn, vắng).</p>
-      <label>Lớp</label><select id="rc"><option value="">Tất cả các lớp${me.role === 'teacher' ? ' của tôi' : ''}</option>
-        ${classes.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select>
-      <div class="grid2"><div><label>Từ ngày học</label><input id="rf" type="date"></div>
+    const tabs = [['att', 'Điểm danh theo lớp'], ['stu', 'Học viên theo lớp']].concat(me.role === 'admin' ? [['hrs', 'Giờ dạy giảng viên']] : []);
+    el.innerHTML = `<div class="card rep"><h2>Báo cáo</h2>
+      <div class="seg" id="rtabs">${tabs.map(([k, l], i) => `<button type="button" data-t="${k}"${i ? '' : ' class="on"'}>${l}</button>`).join('')}</div>
+      <div id="rpane" class="rpane"></div></div>`;
+    const pane = $('#rpane', el);
+    const show = (k) => {
+      $$('#rtabs button', el).forEach((b) => b.classList.toggle('on', b.dataset.t === k));
+      pane.innerHTML = ''; pane.dataset.k = k;
+      if (k === 'att') attendancePane(pane, classes);
+      else if (k === 'stu') studentClassCard(pane, classes);
+      else teachHoursCard(pane);
+    };
+    $$('#rtabs button', el).forEach((b) => { b.onclick = () => show(b.dataset.t); });
+    show('att');
+  }
+
+  function attendancePane(pane, classes) {
+    pane.innerHTML = `<p class="muted small">Điểm danh từng học viên, từng buổi. File Excel gồm 2 trang: "Chi tiết" và "Tổng hợp" (số buổi đúng giờ, muộn, vắng).</p>
+      <div class="rgrid">
+        <div class="rfull"><label>Lớp</label><select id="rc"><option value="">Tất cả các lớp${me.role === 'teacher' ? ' của tôi' : ''}</option>
+          ${classes.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
+        <div><label>Từ ngày học</label><input id="rf" type="date"></div>
         <div><label>Đến ngày học</label><input id="rt" type="date"></div></div>
-      <div style="margin-top:14px"><button class="btn pink" id="go">Xuất Excel</button></div></div>`;
-    $('#go').onclick = (e) => busy(e.target, () => exportReport($('#rc').value ? [$('#rc').value] : null, $('#rf').value, $('#rt').value));
-    studentClassCard(el, classes);
-    if (me.role === 'admin') teachHoursCard(el);
+      <div class="ract"><button class="btn pink" id="go">Xuất Excel</button></div>`;
+    $('#go', pane).onclick = (e) => busy(e.target, () => exportReport($('#rc', pane).value ? [$('#rc', pane).value] : null, $('#rf', pane).value, $('#rt', pane).value));
   }
 
   // Báo cáo học viên - lớp: học viên đã học / đang học những lớp nào. Lọc theo thời gian, mã lớp, giảng viên, học viên
   async function studentClassCard(el, classes) {
     const box = document.createElement('div');
-    box.className = 'card';
     const teachers = await q(db.rpc('list_teachers')).catch(() => []);
-    box.innerHTML = `<h2>Báo cáo học viên theo lớp</h2>
-      <p class="muted small">Danh sách học viên đã học và đang học những lớp nào. Mỗi mục lọc đều có thể để trống.</p>
-      <div class="grid2"><div><label>Mã lớp</label><select id="sc_c"><option value="">Tất cả</option>${classes.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
+    if (el.dataset.k && el.dataset.k !== 'stu') return;
+    box.innerHTML = `<p class="muted small">Học viên đã học và đang học những lớp nào. Mỗi mục lọc đều có thể để trống.</p>
+      <div class="rgrid"><div><label>Mã lớp</label><select id="sc_c"><option value="">Tất cả</option>${classes.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
         <div><label>Giảng viên</label><select id="sc_t"><option value="">Tất cả</option>${teachers.map((t) => `<option value="${esc(String(t.email).toLowerCase())}">${esc(t.full_name || t.email)}</option>`).join('')}</select></div>
         <div><label>Từ ngày</label><input id="sc_f" type="date"></div>
         <div><label>Đến ngày</label><input id="sc_to" type="date"></div>
         <div><label>Học viên (mã hoặc tên)</label><input id="sc_s" placeholder="Để trống = tất cả"></div>
         <div><label>Trạng thái lớp</label><select id="sc_st"><option value="">Tất cả</option><option value="act">Đang học</option><option value="done">Đã học xong</option></select></div>
         <div><label>Sắp xếp theo</label><select id="sc_o"><option value="stu">Học viên</option><option value="cls">Mã lớp</option><option value="tch">Giảng viên</option><option value="time">Thời gian</option></select></div></div>
-      <div style="margin-top:14px"><button class="btn pink" id="sc_go">Xuất Excel</button></div>
+      <div class="ract"><button class="btn pink" id="sc_go">Xuất Excel</button></div>
       <div class="small muted" style="margin-top:8px">Lớp tính vào khoảng thời gian nếu có buổi học nằm trong khoảng đó.</div>`;
     el.appendChild(box);
     $('#sc_go', box).onclick = (e) => busy(e.target, async () => {
@@ -1672,11 +1686,9 @@
     const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
     const ym = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
     const box = document.createElement('div');
-    box.className = 'card';
-    box.innerHTML = `<h2>Báo cáo giờ dạy giảng viên</h2>
-      <p class="muted small">Tính các buổi đã mở điểm danh. Ca sáng 4 giờ, ca chiều và tối 5 giờ.</p>
-      <div class="grid2"><div><label>Tháng</label><input id="thm" type="month" value="${ym}"></div>
-        <div style="align-self:end"><button class="btn pink" id="thgo">Xem báo cáo</button></div></div>
+    box.innerHTML = `<p class="muted small">Giờ dạy của giảng viên theo tháng. Chỉ tính buổi đã mở điểm danh: ca sáng 4 giờ, ca chiều và tối 5 giờ.</p>
+      <div class="rgrid"><div><label>Tháng</label><input id="thm" type="month" value="${ym}"></div></div>
+      <div class="ract"><button class="btn pink" id="thgo">Xem báo cáo</button></div>
       <div id="thout" style="margin-top:12px"></div>`;
     el.appendChild(box);
     let data = null, month = ym;
