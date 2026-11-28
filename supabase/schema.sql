@@ -940,3 +940,35 @@ revoke all on function public.list_tas(), public.set_ta(text, boolean), public.g
   public.close_qr(uuid), public.qr_info(uuid), public.my_ta_sessions(date, date) from public, anon;
 grant execute on function public.list_tas(), public.set_ta(text, boolean), public.get_qr_token(uuid, boolean, double precision, double precision),
   public.close_qr(uuid), public.qr_info(uuid), public.my_ta_sessions(date, date) to authenticated;
+create or replace function public.get_qr_token(p_session uuid, p_reopen boolean default false, p_lat double precision default null, p_lng double precision default null)
+returns jsonb language plpgsql security definer set search_path = public, extensions as $$
+declare cs record; w record; d timestamptz; v_reset boolean; o record; v_dist double precision; v_ta boolean;
+begin
+  select s.id, s.class_id, s.session_no, s.content, s.session_date, s.shift, s.opened_at, s.qr_reset_until, s.teacher_email, s.ta_email, c.name as class_name
+    into cs from public.class_sessions s join public.classes c on c.id = s.class_id where s.id = p_session;
+  if not found then raise exception 'SESSION_NOT_FOUND'; end if;
+  if not public.can_open_session(p_session) then raise exception 'FORBIDDEN'; end if;
+  if public.class_ended(cs.class_id) then raise exception 'CLASS_ENDED'; end if;
+  if cs.teacher_email is null and cs.ta_email is null then raise exception 'NO_TEACHER'; end if;
+  v_reset := cs.qr_reset_until is not null and now() <= cs.qr_reset_until;
+  select * into w from public.qr_window(cs.session_date, cs.shift);
+  d := public.qr_deadline(cs.session_date, cs.shift);
+  if not v_reset then
+    if w.w_start is null or now() > w.w_end then raise exception 'OUT_OF_SESSION'; end if;
+    if now() < w.w_start then raise exception 'NOT_YET'; end if;
+    if d is not null and now() > d and not coalesce(p_reopen, false) then return jsonb_build_object('error', 'QR_EXPIRED'); end if;
+  end if;
+  -- chi tro giang bi han che: giang vien (hoac nguoi quan ly lop) luon duoc mo
+  v_ta := lower(coalesce(cs.teacher_email,'')) <> public.my_email() and not public.can_manage_class(cs.class_id);
+  -- nguoi khac dang mo QR cua buoi nay: chi cho mo them neu cung vi tri (<= 200 m)
+  if v_ta then for o in select * from public.qr_openers where session_id = p_session and user_id <> auth.uid() and active and seen_at > now() - interval '40 seconds' loop
+    if p_lat is null or p_lng is null or o.lat is null or o.lng is null then raise exception 'QR_OTHER_OPENER'; end if;
+    v_dist := 6371000 * 2 * asin(least(1, sqrt(power(sin(radians(p_lat - o.lat) / 2), 2)
+              + cos(radians(o.lat)) * cos(radians(p_lat)) * power(sin(radians(p_lng - o.lng) / 2), 2))));
+    if v_dist > 200 then raise exception 'QR_OTHER_OPENER'; end if;
+  end loop; end if;
+  insert into public.qr_openers(session_id, user_id, lat, lng, seen_at, active) values (p_session, auth.uid(), p_lat, p_lng, now(), true)
+    on conflict (session_id, user_id) do update set lat = coalesce(excluded.lat, public.qr_openers.lat), lng = coalesce(excluded.lng, public.qr_openers.lng), seen_at = now(), active = true;
+  update public.class_sessions set closed = false, opened_at = coalesce(opened_at, now()) where id = p_session;
+  return jsonb_build_object('token', public.make_token(p_session, extract(epoch from now())::bigint), 'class_name', cs.class_name, 'session_no', cs.session_no, 'content', cs.content);
+end $$;
