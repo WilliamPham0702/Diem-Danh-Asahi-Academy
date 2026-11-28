@@ -282,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-48';
+  const APP_VERSION = '2026.11.28-49';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -1060,7 +1060,6 @@
             : `<div>${classTA ? esc(taName(classTA)) : '<span class="muted">Chưa có trợ giảng</span>'}</div>`}</div>
         <div class="btnrow"><button class="btn ghost" id="exp">Xuất Excel</button>
           ${canEnd && !ended ? '<button class="btn ghost" id="endcls">Kết thúc lớp</button>' : ''}
-          <button class="btn ghost" id="add">+ Thêm học viên</button>
           <button class="btn danger" id="del">Xóa lớp</button></div>
       </div>
       ${warned.length ? `<div class="card" style="border-color:#f1c2c8;background:#fff6f7">
@@ -1081,7 +1080,7 @@
           <div class="s-act"><span class="small"><b>${perSession[s.id] || 0}/${total}</b></span>
             ${ended ? '' : qrButtons(s, true)} <a class="btn sm" href="#/session/${s.id}">Chi tiết</a></div></div>`).join('')}
       </div>
-      <div class="card"><h3>Học viên (${total})</h3>
+      <div class="card"><div class="row between"><h3 style="margin:0">Học viên (${total})</h3><button class="btn pink sm" id="add">+ Thêm học viên / up danh sách</button></div>
         <div class="small muted" style="margin-bottom:6px"><span class="sc ok inl">✓</span> đúng giờ &nbsp;<span class="sc late inl">M</span> muộn &nbsp;<span class="sc abs inl">V</span> vắng &nbsp;<span class="sc none inl">·</span> chưa học</div>
         <div class="plist">
           <div class="trow thead"><div>Học viên</div><div>Có mặt / Vắng</div><div>Từng buổi ${ended ? '' : '(bấm vào ô để điểm danh tay / hủy)'}</div><div></div></div>
