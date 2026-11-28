@@ -429,3 +429,23 @@ a.btn.danger { color: var(--bad); }
   .s-act { grid-column: 1 / -1; justify-content: space-between; flex-wrap: wrap; }
 }
 .srow.shead > div { text-align: left; }
+/* mỗi học viên 1 dòng */
+.trow { display: grid; grid-template-columns: minmax(0,1.1fr) 92px minmax(0,2.2fr) auto; gap: 8px 12px; align-items: center;
+  padding: 8px 10px; border-radius: 12px; background: rgba(255,255,255,.7); border: 1px solid rgba(0,47,114,.08); }
+.trow > div { min-width: 0; }
+.trow.thead { background: transparent; border: 0; padding-bottom: 0; font-size: 12px; font-weight: 700; color: var(--navy); text-transform: uppercase; letter-spacing: .3px; }
+.t-act { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.t-act .btn { white-space: nowrap; }
+button.sc { border: 0; font: inherit; cursor: pointer; padding: 2px 0; }
+button.sc:active { transform: scale(.94); }
+@media (max-width: 900px) {
+  .trow { grid-template-columns: minmax(0,1fr) auto; }
+  .trow.thead { display: none; }
+  .trow > div:nth-child(3) { grid-column: 1 / -1; }
+  .t-act { grid-column: 1 / -1; justify-content: flex-start; }
+}
+.trow .sgrid { gap: 3px; }
+.trow .sc { flex: 0 0 24px; font-size: 12px; }
+.trow .sc i { font-size: 8px; }
+.trow { grid-template-columns: minmax(0,1fr) 80px minmax(0,2.4fr) auto; }
+@media (max-width: 900px) { .trow { grid-template-columns: minmax(0,1fr) auto; } }

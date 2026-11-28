@@ -267,7 +267,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-35';
+  const APP_VERSION = '2026.11.28-36';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -911,7 +911,7 @@
     const sessions = await q(db.from('class_sessions').select('*').eq('class_id', id).order('session_no'));
     const roster = await q(db.from('class_students').select('student_code, students(*)').eq('class_id', id));
     const att = sessions.length ? await fetchAll(() => db.from('attendance')
-      .select('session_id, student_code, checked_at, source, late').in('session_id', sessions.map((s) => s.id)).order('id')) : [];
+      .select('id, session_id, student_code, checked_at, source, late').in('session_id', sessions.map((s) => s.id)).order('id')) : [];
     const profs = roster.length ? await fetchAll(() => db.from('profiles').select('student_code, device_id')
       .eq('role', 'student').order('id')) : [];
     const hasDevice = new Set(profs.filter((p) => p.device_id).map((p) => p.student_code));
@@ -970,15 +970,35 @@
       <div class="card"><h3>Học viên (${total})</h3>
         <div class="small muted" style="margin-bottom:6px"><span class="sc ok inl">✓</span> đúng giờ &nbsp;<span class="sc late inl">M</span> muộn &nbsp;<span class="sc abs inl">V</span> vắng &nbsp;<span class="sc none inl">·</span> chưa học</div>
         <div class="plist">
-          ${roster.map((r) => { const s = r.students || {}; return `<div class="pi">
-            <div class="pi-main"><b>${esc(s.full_name || r.student_code)}</b>
-              <div class="small muted">${esc(r.student_code)}${s.title ? ' · ' + esc(s.title) : ''}</div>
-              <div class="pi-st">Có mặt <b>${perStudent[r.student_code] || 0}/${sessions.length}</b> · Vắng ${absent[r.student_code] > 0 ? `<span class="badge ${maxAbsent != null && absent[r.student_code] > maxAbsent ? 'bad' : 'gray'}">${absent[r.student_code]}</span>` : '<b>0</b>'}</div></div>
-            <div class="pi-full">${sessGrid(sessions, attMap, r.student_code)}</div>
-            <div class="pi-act pi-full">${hasDevice.has(r.student_code) ? `<button class="btn sm ghost" data-reset="${esc(r.student_code)}">Đặt lại thiết bị</button>` : ''}
+          <div class="trow thead"><div>Học viên</div><div>Có mặt / Vắng</div><div>Từng buổi ${ended ? '' : '(bấm vào ô để điểm danh tay / hủy)'}</div><div></div></div>
+          ${roster.map((r) => { const s = r.students || {}; return `<div class="trow">
+            <div class="t-main"><b>${esc(s.full_name || r.student_code)}</b>
+              <div class="small muted">${esc(r.student_code)}${s.title ? ' · ' + esc(s.title) : ''}</div></div>
+            <div class="small">Có mặt <b>${perStudent[r.student_code] || 0}/${sessions.length}</b><br>Vắng ${absent[r.student_code] > 0 ? `<span class="badge ${maxAbsent != null && absent[r.student_code] > maxAbsent ? 'bad' : 'gray'}">${absent[r.student_code]}</span>` : '<b>0</b>'}</div>
+            <div>${sessGrid(sessions, attMap, r.student_code, !ended)}</div>
+            <div class="t-act">${hasDevice.has(r.student_code) ? `<button class="btn sm ghost" data-reset="${esc(r.student_code)}">Đặt lại thiết bị</button>` : ''}
               <button class="btn sm ghost" data-resetpw="${esc(r.student_code)}">Đặt lại MK</button>
               <button class="btn sm danger" data-rm="${esc(r.student_code)}">Xóa</button></div></div>`; }).join('')}
         </div></div>`;
+
+    // Bấm vào ô của 1 buổi: đã điểm danh -> Hủy điểm danh; chưa -> Điểm danh tay (chỉ áp dụng cho buổi đó)
+    $$('[data-cell]', el).forEach((b) => { b.onclick = () => {
+      const sess = sessions.find((x) => x.id === b.dataset.cell); const code = b.dataset.code;
+      const stu = (roster.find((r) => r.student_code === code) || {}).students || {};
+      const a = attMap[sess.id + '|' + code];
+      modal(`<h3 style="text-align:center">Buổi ${sess.session_no}${sess.shift ? ' · ' + SHIFT_LABEL[sess.shift] : ''}</h3>
+        <p style="text-align:center"><b>${esc(stu.full_name || code)}</b><br><span class="small muted">${esc(code)} · ${esc(fmtDate(sess.session_date))}</span></p>
+        <p style="text-align:center">${a ? `Đã điểm danh lúc <b>${esc(fmtTime(a.checked_at))}</b>${a.source === 'manual' ? ' (giảng viên điểm danh tay)' : a.late ? ' (muộn)' : ''}.` : 'Chưa có điểm danh ở buổi này.'}</p>
+        <div class="row" style="justify-content:center;margin-top:10px">
+          ${a ? '<button class="btn danger" id="cu">Hủy điểm danh</button>' : '<button class="btn pink" id="cm">Điểm danh tay</button>'}
+          <button class="btn ghost" id="cx">Đóng</button></div>`, (m, close) => {
+        $('#cx', m).onclick = close;
+        if (a) $('#cu', m).onclick = () => busy($('#cu', m), async () => { await q(db.from('attendance').delete().eq('id', a.id)); close(); toast('Đã hủy điểm danh', 'ok'); render(); });
+        else $('#cm', m).onclick = () => busy($('#cm', m), async () => {
+          await q(db.from('attendance').insert({ session_id: sess.id, student_code: code, student_name: stu.full_name || code, source: 'manual' }));
+          close(); toast('Đã điểm danh tay', 'ok'); render(); });
+      });
+    }; });
 
     $('#loc').onchange = () => busy(null, async () => { await q(db.from('classes').update({ location: $('#loc').value.trim() || null }).eq('id', id)); toast('Đã lưu địa điểm', 'ok'); });
     $('#oen').onchange = () => busy(null, async () => { await q(db.from('classes').update({ open_enrollment: $('#oen').checked }).eq('id', id)); toast($('#oen').checked ? 'Đã mở đăng ký cho học viên' : 'Đã đóng đăng ký', 'ok'); });
@@ -1122,13 +1142,15 @@
   const SHIFT_LABEL = { sang: 'Sáng', chieu: 'Chiều' };
   // Số buổi vắng = buổi đã mở điểm danh mà học viên không có bản ghi nào (buổi Thi MOF không tính)
   // Ô trạng thái từng buổi của 1 học viên: ✓ đúng giờ (xanh) / M muộn (cam) / V vắng (đỏ) / · chưa học
-  function sessGrid(sessions, attMap, code) {
+  function sessGrid(sessions, attMap, code, editable) {
     return `<div class="sgrid">${sessions.map((s) => {
       const a = attMap[s.id + '|' + code];
       let c = 'none', t = '·', tip = 'Chưa học';
       if (a) { if (a.source !== 'manual' && a.late) { c = 'late'; t = 'M'; tip = 'Muộn'; } else { c = 'ok'; t = '✓'; tip = 'Có mặt'; } }
       else if (s.opened_at) { c = s.counts_absent === false ? 'abs0' : 'abs'; t = 'V'; tip = s.counts_absent === false ? 'Vắng (không tính)' : 'Vắng'; }
-      return `<span class="sc ${c}" title="Buổi ${s.session_no}: ${tip}"><i>${s.session_no}</i>${t}</span>`;
+      const inner = `<i>${s.session_no}</i>${t}`;
+      return editable ? `<button type="button" class="sc ${c}" data-cell="${s.id}" data-code="${esc(code)}" title="Buổi ${s.session_no}: ${tip}. Bấm để sửa">${inner}</button>`
+        : `<span class="sc ${c}" title="Buổi ${s.session_no}: ${tip}">${inner}</span>`;
     }).join('')}</div>`;
   }
 
