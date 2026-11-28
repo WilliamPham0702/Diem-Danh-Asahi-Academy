@@ -282,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-50';
+  const APP_VERSION = '2026.11.28-51';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -1213,7 +1213,7 @@
         try {
           const list = await q(db.rpc('search_students', { p_q: v, p_class: classId }));
           if (my !== seq) return;
-          box.innerHTML = list.length ? list.map((s) => `<label class="pk"><input type="checkbox" data-c="${esc(s.code)}" data-n="${esc(s.full_name)}"${sel.has(s.code) ? ' checked' : ''}>
+          box.innerHTML = list.length ? list.map((s) => `<label class="pk${s.in_class ? ' dis' : ''}"><input type="checkbox" data-c="${esc(s.code)}" data-n="${esc(s.full_name)}"${s.in_class ? ' disabled' : sel.has(s.code) ? ' checked' : ''}>
             <span><b>${esc(s.full_name)}</b>${s.in_class ? ' <span class="badge gray">Đã trong lớp</span>' : ''}<small>${esc(s.code)}${s.title ? ' · ' + esc(s.title) : ''}</small></span></label>`).join('')
             + (list.length >= 20 ? '<div class="small muted" style="padding:8px 10px">Hiển thị 20 kết quả đầu, gõ thêm để lọc.</div>' : '')
             : '<div class="small muted" style="padding:10px">Không tìm thấy học viên nào.</div>';
