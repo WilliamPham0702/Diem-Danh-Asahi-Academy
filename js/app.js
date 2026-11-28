@@ -213,9 +213,9 @@
     return `<div class="auth-hero">
       <div class="auth-logo">${logoHtml(36)}</div>
       <div class="auth-jp">新しい朝がはじまる</div>
-            <div class="auth-title">Training Academy</div>
+            <div class="auth-title">Asahi Academy</div>
       <div class="auth-div"><i></i><img src="${SYMBOL_URL}" alt="" height="28" onerror="this.style.display='none'"><i></i></div>
-      <div class="auth-sub">Điểm danh lớp học</div>
+      <div class="auth-sub">Training Delivery</div>
     </div>`;
   }
   // Nền video chuyển động (video trên asahilife.com), có ảnh poster dự phòng
@@ -247,10 +247,10 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-18';
+  const APP_VERSION = '2026.11.28-19';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
-      <p>Asahi Life - Training Academy · Hệ thống điểm danh lớp học</p>
+      <p>Asahi Academy · Training Delivery</p>
       <div class="foot-jp">SINCE 1888</div></div></footer>`;
   }
 
