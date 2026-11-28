@@ -313,3 +313,18 @@ body, body:has(.auth) { background: transparent !important; }
 .auth .card h2, .auth .card h3 { text-align: center; }
 
 .auth .card p, .auth .card .small { text-align: center; }
+
+/* ===== v21: trang chủ học viên, thống kê từng buổi ===== */
+.welcome { border-left: 4px solid var(--navy); }
+.cl-type { margin: 12px 0 6px; font-weight: 700; color: var(--navy); font-size: 14px; letter-spacing: .3px; }
+.cl-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+.cl-main { min-width: 0; }
+.sgrid { display: flex; gap: 4px; overflow-x: auto; max-width: 216px; padding-bottom: 4px; -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; }
+.sc { flex: 0 0 32px; text-align: center; border-radius: 6px; font-size: 13px; font-weight: 700; padding: 2px 0; line-height: 1.15; scroll-snap-align: start; }
+.sc i { display: block; font-style: normal; font-size: 9px; font-weight: 500; opacity: .75; }
+.sc.ok { background: #e3f6ec; color: var(--ok); }
+.sc.late { background: #fff3d9; color: var(--warn); }
+.sc.abs { background: #fde7ea; color: var(--bad); }
+.sc.abs0 { background: #f6eef0; color: #b98a92; }
+.sc.none { background: #eceef5; color: #9aa0b4; }
+.sc.inl { display: inline-block; flex: none; width: 22px; padding: 1px 0; }

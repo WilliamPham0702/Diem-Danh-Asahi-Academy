@@ -129,6 +129,8 @@
   // ---------------------------------------------------------------- trạng thái
   let db = null;
   let me = null;
+  let skipPw = false;
+  let reminderAt = 0;
   let cleanups = [];
   const addCleanup = (fn) => cleanups.push(fn);
   function runCleanups() {
@@ -137,7 +139,7 @@
   }
 
   const TABS = {
-    student: [['scan', 'Điểm danh'], ['history', 'Lịch sử'], ['account', 'Tài khoản']],
+    student: [['home', 'Trang chủ'], ['scan', 'Điểm danh'], ['history', 'Lịch sử'], ['account', 'Tài khoản']],
     teacher: [['schedule', 'Lịch dạy'], ['classes', 'Lớp học'], ['roster', 'Học viên'], ['reports', 'Báo cáo'], ['account', 'Tài khoản']],
     admin: [['schedule', 'Lịch dạy'], ['classes', 'Lớp học'], ['roster', 'Học viên'], ['reports', 'Báo cáo'], ['types', 'Loại lớp'],
       ['staff', 'Nhân sự'], ['account', 'Tài khoản']],
@@ -160,7 +162,7 @@
     }
     db = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY);
     db.auth.onAuthStateChange((ev) => {
-      if (ev === 'SIGNED_OUT') { me = null; runCleanups(); viewAuth('login'); }
+      if (ev === 'SIGNED_OUT') { me = null; skipPw = false; reminderAt = 0; runCleanups(); viewAuth('login'); }
     });
     window.addEventListener('hashchange', () => { if (me) render(); });
     const { data } = await db.auth.getSession();
@@ -177,8 +179,9 @@
       return;
     }
     me = data;
-    if (me.must_change_password) { viewForceChange(); return; }
+    if (me.must_change_password && !skipPw) { viewForceChange(); return; }
     if (!location.hash || location.hash === '#') nav(TABS[me.role][0][0]); else render();
+    if (me.role === 'student') checkReminder();
   }
 
   // ---------------------------------------------------------------- thương hiệu (logo lấy từ asahilife.com)
@@ -229,6 +232,7 @@
   }
   // Mỗi trang một ảnh nền + tiêu đề tiếng Nhật riêng (ảnh lấy từ asahilife.com)
   const PAGE_HERO = {
+    home: ['朝', 'Trang chủ', 'Lớp của bạn và các lớp đang mở đăng ký', 'hero-poster.webp', 'center 40%'],
     schedule: ['予定', 'Lịch dạy', 'Các buổi dạy được phân công cho bạn', 'Section%20-%20Welcome%20screen.webp', 'center'],
     classes: ['教室', 'Lớp học', 'Quản lý lớp, buổi học và điểm danh', 'Tea-House-Image.webp', 'center bottom'],
     roster: ['学生', 'Học viên', 'Danh sách học viên và các lớp đã tham gia', '390d3d809a7cb45ac603107d5c810a7294519656.webp', 'center'],
@@ -248,7 +252,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-20';
+  const APP_VERSION = '2026.11.28-21';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -364,6 +368,14 @@
   }
 
   // Lần đầu đăng nhập hoặc sau khi bị đặt lại: bắt buộc đổi mật khẩu
+  // Đổi mật khẩu: chỉ cần >= 6 ký tự; trùng mật khẩu cũ cũng được
+  async function changePassword(p1) {
+    if (p1.length < 6) throw new Error('Mật khẩu cần ít nhất 6 ký tự');
+    if (me.student_code && normCode(p1) === me.student_code) return; // vẫn là mật khẩu mặc định
+    const { error } = await db.auth.updateUser({ password: p1 });
+    if (error && !/different from the old/i.test(error.message || '')) throw error;
+  }
+
   function viewForceChange() {
     runCleanups();
     app.innerHTML = `
@@ -371,17 +383,19 @@
         ${authHero()}
         <div class="card">
           <h2>Đặt mật khẩu mới</h2>
-          <p class="muted small">Xin chào ${esc(me.full_name || '')}. Vì bảo mật, bạn cần đổi mật khẩu trước khi sử dụng (ít nhất 6 ký tự, khác mã học viên).</p>
+          <p class="muted small">Xin chào ${esc(me.full_name || '')}. Vì bảo mật, bạn cần đổi mật khẩu trước khi sử dụng (ít nhất 6 ký tự, không cần khác mật khẩu cũ). Nếu đang gấp điểm danh, bạn có thể bấm "Để sau".</p>
           <form id="f">
             <label>Mật khẩu mới</label><input id="p1" type="password" minlength="6" required autocomplete="new-password">
             <label>Nhập lại mật khẩu mới</label><input id="p2" type="password" minlength="6" required autocomplete="new-password">
             <div class="row" style="margin-top:14px"><button class="btn pink" id="go">Đổi mật khẩu</button>
+              <button type="button" class="btn ghost" id="later">Để sau</button>
               <button type="button" class="btn ghost" id="out">Thoát</button></div>
             <div class="form-msg" id="msg"></div>
           </form>
         </div>
       </div>`;
     $('#out').onclick = () => db.auth.signOut();
+    $('#later').onclick = () => { skipPw = true; location.hash = '#/' + TABS[me.role][0][0]; enter(); };
     $('#f').onsubmit = async (e) => {
       e.preventDefault();
       const msg = $('#msg'); msg.className = 'form-msg'; msg.textContent = '';
@@ -389,9 +403,7 @@
       try {
         const p1 = $('#p1').value;
         if (p1 !== $('#p2').value) throw new Error('Hai mật khẩu không giống nhau');
-        if (me.student_code && normCode(p1) === me.student_code) throw new Error('Mật khẩu mới phải khác mã học viên');
-        const { error } = await db.auth.updateUser({ password: p1 });
-        if (error) throw error;
+        await changePassword(p1);
         await q(db.rpc('password_changed'));
         toast('Đã đổi mật khẩu', 'ok');
         await enter();
@@ -433,7 +445,7 @@
     $('#logout').onclick = () => db.auth.signOut();
     const el = $('#main');
     const views = {
-      scan: viewScan, history: viewHistory, account: viewAccount,
+      home: viewHome, scan: viewScan, history: viewHistory, account: viewAccount,
       classes: viewClasses, schedule: viewSchedule, class: viewClass, session: viewSession,
       roster: viewRoster, reports: viewReports, types: viewTypes, staff: viewStaff,
     };
@@ -441,6 +453,89 @@
       console.error(e);
       el.innerHTML = `<div class="card"><p class="form-msg err">${esc(errMsg(e))}</p></div>`;
     });
+  }
+
+  // ================================================================ HỌC VIÊN: nhắc điểm danh
+  async function checkReminder() {
+    if (!me || me.role !== 'student' || Date.now() - reminderAt < 5 * 60 * 1000) return;
+    try {
+      const { data } = await db.rpc('my_open_sessions');
+      if (!data || !data.length) return;
+      reminderAt = Date.now();
+      modal(`<h3 style="text-align:center">🔔 Đang có buổi cần điểm danh</h3>
+        ${data.map((x) => `<div class="card" style="margin:8px 0"><b>${esc(x.class_name)}</b><br><span class="muted small">Buổi ${esc(x.session_no)}: ${esc(x.content || '')}</span></div>`).join('')}
+        <p class="muted small" style="text-align:center">Bấm nút bên dưới để mở camera và quét mã QR trên màn hình giảng viên.</p>
+        <div class="row" style="justify-content:center;margin-top:10px"><button class="btn pink" id="goscan">Mở camera điểm danh</button>
+          <button class="btn ghost" id="lt">Để sau</button></div>`, (m, close) => {
+        $('#lt', m).onclick = close;
+        $('#goscan', m).onclick = () => { close(); sessionStorage.setItem('autoscan', '1'); if (location.hash === '#/scan') render(); else nav('scan'); };
+      });
+    } catch (e) { console.error(e); }
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && me && me.role === 'student') checkReminder(); });
+
+  // ================================================================ HỌC VIÊN: trang chủ
+  const WISHES = {
+    sang: ['Chúc bạn một buổi sáng như bình minh Nhật Bản: mỗi điều mới học hôm nay là một tia nắng cho sự nghiệp của bạn.',
+      'Buổi sáng là trang giấy trắng. Hãy viết lên đó thật nhiều ý tưởng và nụ cười!',
+      'Chúc bạn một buổi sáng bứt phá: học một điều, làm một điều, tiến thêm một bước.',
+      '新しい朝がはじまる, một buổi sáng mới bắt đầu. Hôm nay bạn sẽ giỏi hơn hôm qua!'],
+    chieu: ['Chúc bạn một buổi chiều tràn đầy năng lượng: kiên trì thêm chút nữa, thành quả đang ở rất gần.',
+      'Giữa ngày là lúc khẳng định bản lĩnh. Chúc bạn tập trung, vui và thật hiệu quả!',
+      'Mỗi buổi học là một viên gạch xây nên phiên bản xuất sắc nhất của bạn. Chúc bạn một buổi chiều thật đáng giá!'],
+    toi: ['Chúc bạn một buổi tối bình yên, nhìn lại những gì đã học và tự hào về bản thân nhé.',
+      'Ngày hôm nay bạn đã cố gắng rất nhiều. Chúc bạn một buổi tối thật nhẹ nhõm và một giấc ngủ ngon!',
+      'Sau mỗi ngày nỗ lực là một buổi tối xứng đáng nghỉ ngơi. Chúc bạn tối nay thật ấm áp!'],
+  };
+  function wishNow() {
+    const h = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' })).getHours();
+    const part = h < 12 ? 'sang' : h < 18 ? 'chieu' : 'toi';
+    const word = { sang: 'buổi sáng', chieu: 'buổi chiều', toi: 'buổi tối' }[part];
+    const list = WISHES[part];
+    return { word, text: list[Math.floor(Math.random() * list.length)] };
+  }
+  async function viewHome(el) {
+    const w = wishNow();
+    el.innerHTML = `
+      <div class="card welcome">
+        <div class="muted small" style="letter-spacing:3px">歓迎</div>
+        <h2 style="margin:4px 0 6px">Chào mừng ${esc(me.full_name || 'bạn')} đã đến với Asahi Academy</h2>
+        <p style="margin:0">${esc(w.text)}</p></div>
+      <div id="cl" class="muted center">Đang tải lớp học...</div>`;
+    const rows = await q(db.rpc('list_open_classes'));
+    const fmtRange = (c) => c.first_session ? `${fmtDate(c.first_session)} → ${fmtDate(c.last_session)}` : '(chưa có lịch)';
+    const group = (list) => {
+      const g = {}; list.forEach((c) => { (g[c.type_name] = g[c.type_name] || []).push(c); });
+      return Object.keys(g).sort((a, b) => a.localeCompare(b, 'vi')).map((k) => [k, g[k]]);
+    };
+    const joined = rows.filter((c) => c.joined);
+    const open = rows.filter((c) => !c.joined);
+    const card = (c, isOpen) => `<div class="cl-item">
+      <div class="cl-main"><b>${esc(c.name)}</b>
+        <div class="small muted">Thời gian: ${esc(fmtRange(c))}${c.location ? '<br>Địa điểm: ' + esc(c.location) : ''}${(c.teachers || []).length ? '<br>Giảng viên: ' + esc(c.teachers.join(', ')) : ''}</div>
+        ${isOpen ? '' : `<div class="small" style="margin-top:4px">Đã điểm danh <b>${c.attended}/${c.total_sessions}</b> buổi</div>`}</div>
+      ${isOpen ? `<button class="btn pink sm" data-reg="${c.id}">Đăng ký</button>` : '<span class="badge ok">Đã tham gia</span>'}</div>`;
+    const section = (title, list, isOpen, empty) => `<div class="card"><h3>${title}</h3>${list.length ? group(list).map(([k, items]) =>
+      `<div class="cl-type">${esc(k)}</div>${items.map((c) => card(c, isOpen)).join('')}`).join('') : `<p class="muted">${empty}</p>`}</div>`;
+    $('#cl').outerHTML = section('Lớp học của bạn', joined, false, 'Bạn chưa tham gia lớp nào.')
+      + section('Lớp đang mở đăng ký', open, true, 'Hiện chưa có lớp nào mở đăng ký.');
+    $$('[data-reg]', el).forEach((b) => { b.onclick = () => {
+      const c = rows.find((x) => x.id === b.dataset.reg);
+      modal(`<h3 style="text-align:center">Đăng ký lớp</h3>
+        <div class="card" style="margin:8px 0"><b>${esc(c.name)}</b>
+          <div class="small" style="margin-top:6px">Loại lớp: ${esc(c.type_name)}<br>Thời gian học: ${esc(fmtRange(c))}<br>Địa điểm: ${esc(c.location || '(chưa cập nhật)')}<br>Giảng viên: ${esc((c.teachers || []).join(', ') || '(chưa phân công)')}</div></div>
+        <p class="muted small">Mỗi buổi học chỉ được tham gia 1 lớp. Nếu trùng ngày và ca với lớp bạn đang học, hệ thống sẽ báo.</p>
+        <div class="row" style="justify-content:center;margin-top:10px"><button class="btn pink" id="okreg">Xác nhận đăng ký</button>
+          <button class="btn ghost" id="noreg">Hủy</button></div>`, (m, close) => {
+        $('#noreg', m).onclick = close;
+        $('#okreg', m).onclick = () => busy($('#okreg', m), async () => {
+          const r = await q(db.rpc('enroll_class', { p_class: c.id }));
+          close();
+          toast(r.message, r.status === 'ok' ? 'ok' : 'err');
+          if (r.status === 'ok') render();
+        });
+      });
+    }; });
   }
 
   // ================================================================ HỌC VIÊN
@@ -504,6 +599,7 @@
           (trang phải mở bằng https).</div>`;
       }
     };
+    if (sessionStorage.getItem('autoscan')) { sessionStorage.removeItem('autoscan'); setTimeout(() => { const b = $('#start'); if (b) b.click(); }, 300); }
   }
 
   async function viewHistory(el) {
@@ -540,8 +636,8 @@
       e.preventDefault();
       busy($('#f button'), async () => {
         if ($('#p1').value !== $('#p2').value) throw new Error('Hai mật khẩu không giống nhau');
-        const { error } = await db.auth.updateUser({ password: $('#p1').value });
-        if (error) throw error;
+        await changePassword($('#p1').value);
+        await q(db.rpc('password_changed'));
         $('#f').reset();
         toast('Đã đổi mật khẩu', 'ok');
       });
@@ -646,6 +742,8 @@
           <div><label>Ngày học đầu tiên</label><input id="cd" type="date" value="${today}" required></div>
         </div>
         <label>Ngày tốt nghiệp <span class="muted small">(tự tính, có thể chọn ngày khác)</span></label><input id="cg" type="date" required>
+        <label>Địa điểm học</label><input id="cl" placeholder="VD: Phòng 301, Asahi Life - 123 Nguyễn Huệ, Q.1">
+        <label style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="ce" style="width:auto"> Mở đăng ký cho học viên tự đăng ký lớp này</label>
         <label>Danh sách học viên (file Excel)</label><input id="cx" type="file" accept=".xlsx,.xls,.csv">
         <div class="small muted">Cột: Mã học viên, Họ và tên, Chức danh. Cột Mã học viên nên để định dạng Text để giữ số 0 ở đầu. <a href="#" id="tpl">Tải file mẫu</a></div>
         <label>Hoặc nhập thêm mã học viên đã có trong hệ thống</label>
@@ -683,6 +781,7 @@
             p_name: $('#cn', m).value.trim().toUpperCase(), p_type: $('#ct', m).value, p_start: $('#cd', m).value,
             p_codes: codes, p_grad: $('#cg', m).value || null,
           }));
+          await q(db.from('classes').update({ location: $('#cl', m).value.trim() || null, open_enrollment: $('#ce', m).checked }).eq('id', id));
           const miss = codes.length ? await missingCodes(codes) : [];
           close();
           toast(codes.length ? `Đã tạo lớp, ${codes.length - miss.length} học viên` : 'Đã tạo lớp', 'ok');
@@ -699,7 +798,7 @@
     const sessions = await q(db.from('class_sessions').select('*').eq('class_id', id).order('session_no'));
     const roster = await q(db.from('class_students').select('student_code, students(*)').eq('class_id', id));
     const att = sessions.length ? await fetchAll(() => db.from('attendance')
-      .select('session_id, student_code, checked_at, source').in('session_id', sessions.map((s) => s.id)).order('id')) : [];
+      .select('session_id, student_code, checked_at, source, late').in('session_id', sessions.map((s) => s.id)).order('id')) : [];
     const profs = roster.length ? await fetchAll(() => db.from('profiles').select('student_code, device_id')
       .eq('role', 'student').order('id')) : [];
     const hasDevice = new Set(profs.filter((p) => p.device_id).map((p) => p.student_code));
@@ -711,6 +810,7 @@
     });
     const total = roster.length;
     const attSet = new Set(att.map((a) => a.session_id + '|' + a.student_code));
+    const attMap = {}; att.forEach((a) => { attMap[a.session_id + '|' + a.student_code] = a; });
     const maxAbsent = cls.class_types?.max_absent;
     const absent = {}; roster.forEach((r) => { absent[r.student_code] = absentCount(sessions, r.student_code, attSet); });
     const teachers = await q(db.rpc('list_teachers'));
@@ -722,6 +822,9 @@
       <div class="card">
         <div><h2>${esc(cls.name)}</h2>
           <span class="muted">${esc(cls.class_types?.name || '')} · bắt đầu ${esc(fmtDate(cls.start_date))}${cls.graduation_date ? ' · tốt nghiệp ' + esc(fmtDate(cls.graduation_date)) : ''}</span></div>
+        <div class="grid2" style="margin-top:10px">
+          <div><label>Địa điểm học</label><input id="loc" value="${esc(cls.location || '')}" placeholder="Nhập địa điểm học"></div>
+          <div><label>Đăng ký</label><label style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="oen" style="width:auto"${cls.open_enrollment ? ' checked' : ''}> Mở đăng ký cho học viên</label></div></div>
         <div class="btnrow"><button class="btn ghost" id="exp">Xuất Excel</button>
           <button class="btn ghost" id="add">+ Thêm học viên</button>
           <button class="btn danger" id="del">Xóa lớp</button></div>
@@ -744,18 +847,22 @@
               <a class="btn sm" href="#/session/${s.id}">Chi tiết</a></td></tr>`).join('')}
         </table></div></div>
       <div class="card"><h3>Học viên (${total})</h3>
+        <div class="small muted" style="margin-bottom:6px"><span class="sc ok inl">✓</span> đúng giờ &nbsp;<span class="sc late inl">M</span> muộn &nbsp;<span class="sc abs inl">V</span> vắng &nbsp;<span class="sc none inl">·</span> chưa học &nbsp;(kéo ngang để xem các buổi sau)</div>
         <div class="tbl-wrap"><table>
-          <tr><th>Mã</th><th>Họ tên</th><th>Chức danh</th><th>Có mặt</th><th>Vắng</th><th></th></tr>
+          <tr><th>Mã</th><th>Họ tên</th><th>Chức danh</th><th>Có mặt</th><th>Vắng</th><th>Từng buổi</th><th></th></tr>
           ${roster.map((r) => { const s = r.students || {}; return `<tr>
             <td>${esc(r.student_code)}</td><td>${esc(s.full_name)}</td>
             <td>${esc(s.title)}</td>
             <td>${perStudent[r.student_code] || 0}/${sessions.length}</td>
             <td>${absent[r.student_code] > 0 ? `<span class="badge ${maxAbsent != null && absent[r.student_code] > maxAbsent ? 'bad' : 'gray'}">${absent[r.student_code]}</span>` : '0'}</td>
+            <td>${sessGrid(sessions, attMap, r.student_code)}</td>
             <td class="act">${hasDevice.has(r.student_code) ? `<button class="btn sm ghost" data-reset="${esc(r.student_code)}">Đặt lại thiết bị</button>` : ''}
               <button class="btn sm ghost" data-resetpw="${esc(r.student_code)}">Đặt lại MK</button>
               <button class="btn sm danger" data-rm="${esc(r.student_code)}">Xóa</button></td></tr>`; }).join('')}
         </table></div></div>`;
 
+    $('#loc').onchange = () => busy(null, async () => { await q(db.from('classes').update({ location: $('#loc').value.trim() || null }).eq('id', id)); toast('Đã lưu địa điểm', 'ok'); });
+    $('#oen').onchange = () => busy(null, async () => { await q(db.from('classes').update({ open_enrollment: $('#oen').checked }).eq('id', id)); toast($('#oen').checked ? 'Đã mở đăng ký cho học viên' : 'Đã đóng đăng ký', 'ok'); });
     $('#exp').onclick = (e) => busy(e.target, () => exportReport([id]));
     $('#add').onclick = () => openAddStudents(id);
     $('#del').onclick = (e) => {
@@ -843,6 +950,17 @@
 
   const SHIFT_LABEL = { sang: 'Sáng', chieu: 'Chiều' };
   // Số buổi vắng = buổi đã mở điểm danh mà học viên không có bản ghi nào (buổi Thi MOF không tính)
+  // Ô trạng thái từng buổi của 1 học viên: ✓ đúng giờ (xanh) / M muộn (cam) / V vắng (đỏ) / · chưa học
+  function sessGrid(sessions, attMap, code) {
+    return `<div class="sgrid">${sessions.map((s) => {
+      const a = attMap[s.id + '|' + code];
+      let c = 'none', t = '·', tip = 'Chưa học';
+      if (a) { if (a.source !== 'manual' && a.late) { c = 'late'; t = 'M'; tip = 'Muộn'; } else { c = 'ok'; t = '✓'; tip = 'Có mặt'; } }
+      else if (s.opened_at) { c = s.counts_absent === false ? 'abs0' : 'abs'; t = 'V'; tip = s.counts_absent === false ? 'Vắng (không tính)' : 'Vắng'; }
+      return `<span class="sc ${c}" title="Buổi ${s.session_no}: ${tip}"><i>${s.session_no}</i>${t}</span>`;
+    }).join('')}</div>`;
+  }
+
   function absentCount(sessions, code, attSet) {
     return sessions.filter((s) => s.opened_at && s.counts_absent !== false && !attSet.has(s.id + '|' + code)).length;
   }
