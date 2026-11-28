@@ -518,3 +518,7 @@ table.ced td.ct, table.ced td:nth-child(7) { min-width: 220px; }
 
 /* ===== v48: chọn cấp khi thêm học viên ===== */
 .npsum { margin: 4px 0 6px; padding: 6px 10px; background: #eef2fa; border-radius: 8px; color: var(--navy); }
+
+/* v52: buổi không thuộc module của học viên */
+.sc.off { background: #f3f4f8; color: #c3c7d6; border: 1px dashed #d5d8e4; cursor: not-allowed; }
+.pi.off { opacity: .5; }

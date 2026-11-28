@@ -282,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-51';
+  const APP_VERSION = '2026.11.28-52';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -1019,10 +1019,12 @@
       perStudent[a.student_code] = (perStudent[a.student_code] || 0) + 1;
     });
     const total = roster.length;
+    const inScope = (r, sx) => !cnodes.length || inNodes(r.node_ids, sx.node_id, cnodes);
+    const perTotal = {}; sessions.forEach((sx) => { perTotal[sx.id] = roster.filter((r) => inScope(r, sx)).length; });
     const attSet = new Set(att.map((a) => a.session_id + '|' + a.student_code));
     const attMap = {}; att.forEach((a) => { attMap[a.session_id + '|' + a.student_code] = a; });
     const maxAbsent = cls.class_types?.max_absent;
-    const absent = {}; roster.forEach((r) => { absent[r.student_code] = absentCount(sessions, r.student_code, attSet); });
+    const absent = {}; roster.forEach((r) => { absent[r.student_code] = absentCount(sessions.filter((sx) => inScope(r, sx)), r.student_code, attSet); });
     const teachers = await q(db.rpc('list_teachers'));
     const tas = await q(db.rpc('list_tas')).catch(() => []);
     // ứng viên trợ giảng: học viên đã được nâng lên trợ giảng + giảng viên (giảng viên có thể là trợ giảng lớp khác)
@@ -1075,7 +1077,7 @@
           <div><select data-teacher="${s.id}"><option value="">(Chưa gán)</option>${teachers.map((t) => `<option value="${esc(t.email)}"${t.email === String(s.teacher_email || '').toLowerCase() ? ' selected' : ''}>${esc(t.full_name || t.email)}${t.has_account ? '' : ' (chưa tạo TK)'}</option>`).join('')}</select></div>
           <div><select data-ta="${s.id}"${classTA && !ended ? '' : ' disabled'}><option value="">${classTA ? '(Không có trợ giảng)' : '(Lớp chưa có trợ giảng)'}</option>
             ${classTA ? `<option value="${esc(classTA)}"${String(s.ta_email || '').toLowerCase() === classTA ? ' selected' : ''}>${esc(taName(classTA))}</option>` : ''}</select></div>
-          <div class="s-act"><span class="small"><b>${perSession[s.id] || 0}/${total}</b></span>
+          <div class="s-act"><span class="small"><b>${perSession[s.id] || 0}/${perTotal[s.id]}</b></span>
             ${ended ? '' : qrButtons(s, true)} <a class="btn sm" href="#/session/${s.id}">Chi tiết</a></div></div>`).join('')}
       </div>
       <div class="card"><div class="row between"><h3 style="margin:0">Học viên (${total})</h3><button class="btn pink sm" id="add">+ Thêm học viên / up danh sách</button></div>
@@ -1086,8 +1088,8 @@
             <div class="t-main"><b>${esc(s.full_name || r.student_code)}</b>
               <div class="small muted">${esc(r.student_code)}${s.title ? ' · ' + esc(s.title) : ''}</div>
               ${cnodes.length ? `<div class="pi-st">${nodeTags(r.node_ids, cnodes)} <span class="small muted">${sessions.filter((x) => inNodes(r.node_ids, x.node_id, cnodes)).length} buổi</span> ${ended ? '' : `<a href="#" data-nodes="${esc(r.student_code)}" class="small">Đổi module</a>`}</div>` : ''}</div>
-            <div class="small">Có mặt <b>${perStudent[r.student_code] || 0}/${sessions.length}</b><br>Vắng ${absent[r.student_code] > 0 ? `<span class="badge ${maxAbsent != null && absent[r.student_code] > maxAbsent ? 'bad' : 'gray'}">${absent[r.student_code]}</span>` : '<b>0</b>'}</div>
-            <div>${sessGrid(sessions, attMap, r.student_code, !ended)}</div>
+            <div class="small">Có mặt <b>${perStudent[r.student_code] || 0}/${sessions.filter((sx) => inScope(r, sx)).length}</b><br>Vắng ${absent[r.student_code] > 0 ? `<span class="badge ${maxAbsent != null && absent[r.student_code] > maxAbsent ? 'bad' : 'gray'}">${absent[r.student_code]}</span>` : '<b>0</b>'}</div>
+            <div>${sessGrid(sessions, attMap, r.student_code, !ended, (sx) => inScope(r, sx))}</div>
             <div class="t-act">${hasDevice.has(r.student_code) ? `<button class="btn sm ghost" data-reset="${esc(r.student_code)}">Đặt lại thiết bị</button>` : ''}
               <button class="btn sm ghost" data-resetpw="${esc(r.student_code)}">Đặt lại MK</button>
               <button class="btn sm danger" data-rm="${esc(r.student_code)}">Xóa</button></div></div>`; }).join('')}
@@ -1265,8 +1267,9 @@
   const SHIFT_LABEL = { sang: 'Sáng', chieu: 'Chiều' };
   // Số buổi vắng = buổi đã mở điểm danh mà học viên không có bản ghi nào (buổi Thi MOF không tính)
   // Ô trạng thái từng buổi của 1 học viên: ✓ đúng giờ (xanh) / M muộn (cam) / V vắng (đỏ) / · chưa học
-  function sessGrid(sessions, attMap, code, editable) {
+  function sessGrid(sessions, attMap, code, editable, inScope) {
     return `<div class="sgrid">${sessions.map((s) => {
+      if (inScope && !inScope(s)) return `<span class="sc off" title="Buổi ${s.session_no}: học viên không học module này"><i>${s.session_no}</i>–</span>`;
       const a = attMap[s.id + '|' + code];
       let c = 'none', t = '·', tip = 'Chưa học';
       if (a) { if (a.source !== 'manual' && a.late) { c = 'late'; t = 'M'; tip = 'Muộn'; } else { c = 'ok'; t = '✓'; tip = 'Có mặt'; } }
@@ -1299,17 +1302,21 @@
     const sess = await q(db.from('class_sessions').select('*, classes(id, name, ended_at)').eq('id', id).single());
     const cls = sess.classes;
     const ended = !!cls.ended_at;
-    const roster = await q(db.from('class_students').select('student_code, students(*)').eq('class_id', cls.id));
+    const roster = await q(db.from('class_students').select('student_code, node_ids, students(*)').eq('class_id', cls.id));
+    const clsRow = await q(db.from('classes').select('class_type_id').eq('id', cls.id).single());
+    const cn = clsRow.class_type_id ? (await loadNodes()).filter((n) => n.class_type_id === clsRow.class_type_id) : [];
     const att = await q(db.from('attendance').select('*').eq('session_id', id));
     const map = {}; att.forEach((a) => { map[a.student_code] = a; });
     roster.sort((a, b) => String(a.students?.full_name).localeCompare(String(b.students?.full_name), 'vi'));
     const stat = { 'Đúng giờ': 0, 'Muộn': 0, 'Vắng': 0 };
     const rows = roster.map((r) => {
-      const a = map[r.student_code]; const st = lateInfo(sess, cls, a);
+      const a = map[r.student_code];
+      if (cn.length && !inNodes(r.node_ids, sess.node_id, cn)) return { r, a: null, st: 'Không học', off: true };
+      const st = lateInfo(sess, cls, a);
       if (stat[st] !== undefined) stat[st]++; else if (st.startsWith('Có mặt')) stat['Đúng giờ']++;
       return { r, a, st };
     });
-    const badge = (st) => (st === 'Vắng' ? 'bad' : st === 'Muộn' ? 'warn' : st === 'Chưa mở' ? 'gray' : 'ok');
+    const badge = (st) => (st === 'Không học' ? 'gray' : st === 'Vắng' ? 'bad' : st === 'Muộn' ? 'warn' : st === 'Chưa mở' ? 'gray' : 'ok');
 
     el.innerHTML = `
       <p><a href="#/class/${cls.id}">&larr; ${esc(cls.name)}</a></p>
@@ -1319,22 +1326,22 @@
         ${ended ? '<span class="badge bad">Lớp đã kết thúc</span> ' : ''}${sess.closed ? '<span class="badge gray">Đã đóng</span> ' : ''}${ended ? '' : qrOpenable(sess) ? `<a class="btn pink" href="#/qr/${id}">Mở QR điểm danh</a>` : (me.role === 'admin' ? `<button class="btn ghost" data-resetqr="${id}">Reset QR</button>` : '')}</div>
         <div class="stat" style="margin-top:12px">
           <div class="chip"><b>${stat['Đúng giờ']}</b>Đúng giờ</div><div class="chip"><b>${stat['Muộn']}</b>Muộn</div>
-          <div class="chip"><b>${stat['Vắng']}</b>Vắng</div><div class="chip"><b>${roster.length}</b>Tổng</div><div class="chip"><b>${att.filter((x) => x.out_of_area === true).length}</b>Ngoài khu vực</div></div></div>
+          <div class="chip"><b>${stat['Vắng']}</b>Vắng</div><div class="chip"><b>${rows.filter((x) => !x.off).length}</b>Tổng</div><div class="chip"><b>${att.filter((x) => x.out_of_area === true).length}</b>Ngoài khu vực</div></div></div>
       <div class="card"><h3>Điểm danh buổi này</h3>
         <div class="small muted">${ended ? 'Lớp đã kết thúc nên không sửa được điểm danh.' : 'Bấm <b>Điểm danh tay</b> để ghi có mặt, hoặc <b>Hủy điểm danh</b> để xóa điểm danh của học viên. Chỉ áp dụng cho buổi này.'}</div>
         <input id="fs" placeholder="Tìm theo mã, tên..." style="margin-top:10px">
-        <div class="seg" id="fseg"><button data-f="all" class="on">Tất cả (${rows.length})</button><button data-f="no">Chưa điểm danh (${rows.filter((x) => !x.a).length})</button><button data-f="yes">Đã điểm danh (${rows.filter((x) => x.a).length})</button></div>
+        <div class="seg" id="fseg"><button data-f="all" class="on">Tất cả (${rows.length})</button><button data-f="no">Chưa điểm danh (${rows.filter((x) => !x.a && !x.off).length})</button><button data-f="yes">Đã điểm danh (${rows.filter((x) => x.a).length})</button></div>
         <div class="plist" id="pl">
-        ${rows.map(({ r, a, st }) => `<div class="pi" data-k="${esc(norm(r.student_code + ' ' + (r.students?.full_name || '')))}" data-has="${a ? 1 : 0}">
+        ${rows.map(({ r, a, st, off }) => `<div class="pi${off ? ' off' : ''}" data-k="${esc(norm(r.student_code + ' ' + (r.students?.full_name || '')))}" data-has="${a ? 1 : 0}" data-off="${off ? 1 : 0}">
           <div class="pi-main"><b>${esc(r.students?.full_name || r.student_code)}</b>
             <div class="small muted">${esc(r.student_code)}${r.students?.title ? ' · ' + esc(r.students.title) : ''}</div>
             <div class="pi-st"><span class="badge ${badge(st)}">${esc(st)}</span>${a ? `<span class="small">${esc(fmtTime(a.checked_at))}</span>` : ''}${locBadge(a)}</div></div>
-          <div class="pi-act">${ended ? '' : a ? `<button class="btn sm danger" data-undo="${a.id}">Hủy điểm danh</button>`
+          <div class="pi-act">${ended || off ? '' : a ? `<button class="btn sm danger" data-undo="${a.id}">Hủy điểm danh</button>`
             : `<button class="btn sm pink" data-manual="${esc(r.student_code)}" data-name="${esc(r.students?.full_name)}">Điểm danh tay</button>`}</div></div>`).join('')}
         </div></div>`;
     let flt = 'all';
     const applyF = () => { const k = norm($('#fs', el).value);
-      $$('#pl .pi', el).forEach((d) => { d.classList.toggle('hide', !((!k || d.dataset.k.includes(k)) && (flt === 'all' || (flt === 'yes') === (d.dataset.has === '1')))); }); };
+      $$('#pl .pi', el).forEach((d) => { d.classList.toggle('hide', !((!k || d.dataset.k.includes(k)) && (flt === 'all' || (d.dataset.off !== '1' && (flt === 'yes') === (d.dataset.has === '1'))))); }); };
     $('#fs', el).oninput = applyF;
     $$('#fseg button', el).forEach((b) => { b.onclick = () => { flt = b.dataset.f; $$('#fseg button', el).forEach((x) => x.classList.toggle('on', x === b)); applyF(); }; });
     bindResetQR(el);
