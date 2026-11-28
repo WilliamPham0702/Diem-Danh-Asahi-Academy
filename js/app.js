@@ -10,7 +10,7 @@
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmtTime = (d) => (d ? new Date(d).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '');
-  const fmtDate = (s) => (s ? String(s).split('-').reverse().join('/') : '');
+  const fmtDate = (s) => { if (!s) return ''; const a = String(s).slice(0, 10).split('-'); return a.length === 3 ? a[2] + '/' + a[1] + '/' + a[0].slice(-2) : String(s); };
   const ROLE_LABEL = { admin: 'Admin', teacher: 'Giảng viên', student: 'Học viên' };
 
   const ERR = {
@@ -282,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-39';
+  const APP_VERSION = '2026.11.28-40';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -1957,13 +1957,13 @@
     await load();
   }
 
-  // Ô ngày hiển thị dạng dd/mm/yyyy (ô chọn ngày gốc của trình duyệt vẫn dùng để chọn, nhưng được ẩn đi)
+  // Ô ngày hiển thị dạng dd/mm/yy (ô chọn ngày gốc của trình duyệt vẫn dùng để chọn, nhưng được ẩn đi)
   function enhanceDates(root) {
     $$('input[type="date"]:not(.dn)', root || document).forEach((inp) => {
       inp.classList.add('dn');
       const w = document.createElement('span'); w.className = 'dwrap';
       const t = document.createElement('span'); t.className = 'dtxt';
-      const upd = () => { t.textContent = inp.value ? fmtDate(inp.value) : 'dd/mm/yyyy'; t.classList.toggle('ph', !inp.value); };
+      const upd = () => { t.textContent = inp.value ? fmtDate(inp.value) : 'dd/mm/yy'; t.classList.toggle('ph', !inp.value); };
       inp.parentNode.insertBefore(w, inp); w.append(t, inp); upd();
       inp.addEventListener('input', upd); inp.addEventListener('change', upd);
     });
