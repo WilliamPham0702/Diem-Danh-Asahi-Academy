@@ -1,0 +1,5 @@
+
+/* v56: cảnh báo vắng ở trang chủ học viên */
+.abs-warn { margin-top: 8px; padding: 8px 10px; border-radius: 10px; font-size: 13px; line-height: 1.4; }
+.abs-warn.bad { background: #fff1f2; color: var(--bad, #c0392b); border: 1px solid #f1c2c8; }
+.abs-warn.warn { background: #fff8e8; color: #8a5a00; border: 1px solid #f3dca6; }

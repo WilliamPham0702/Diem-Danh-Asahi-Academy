@@ -282,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-55';
+  const APP_VERSION = '2026.11.28-56';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -604,6 +604,7 @@
       <div id="cl" class="muted center">Đang tải lớp học...</div>`;
     const box = $('#cl', el);
     const rows = await q(db.rpc('list_open_classes'));
+    const myAbs = {}; try { (await q(db.rpc('my_absences'))).forEach((x) => { myAbs[x.class_id] = x; }); } catch (e) { /* chưa có thì bỏ qua */ }
     if (!box || !box.isConnected) return;
     const fmtRange = (c) => c.first_session ? `${fmtDate(c.first_session)} → ${fmtDate(c.last_session)}` : '(chưa có lịch)';
     const group = (list) => {
@@ -613,14 +614,20 @@
     const joined = rows.filter((c) => c.joined);
     const open = rows.filter((c) => !c.joined);
     const card = (c, isOpen) => {
-      const pct = c.total_sessions ? Math.round(100 * c.attended / c.total_sessions) : 0;
+      const ab = myAbs[c.id]; const att = ab ? ab.attended : c.attended; const tot = ab ? ab.total : c.total_sessions;
+      const pct = tot ? Math.round(100 * att / tot) : 0;
+      const mods = ab ? ab.mods.filter((m) => m.max != null) : [];
+      const over = mods.filter((m) => m.used > m.max), full = mods.filter((m) => m.used >= 1 && m.used === m.max);
+      const warn = over.length ? `<div class="abs-warn bad">⚠ Bạn đã vắng quá số buổi cho phép: ${over.map((m) => esc(m.code) + ' ' + m.used + '/' + m.max).join(', ')}. Hãy liên hệ giảng viên.</div>`
+        : full.length ? `<div class="abs-warn warn">Bạn đã dùng hết số buổi được vắng: ${full.map((m) => esc(m.code) + ' ' + m.used + '/' + m.max).join(', ')}. Vắng thêm sẽ bị vượt.</div>` : '';
+      const absLine = mods.length ? `<div class="small" style="margin-top:4px">Vắng: ${mods.map((m) => `<span class="badge ${m.used > m.max ? 'bad' : m.used >= 1 && m.used === m.max ? 'warn' : 'gray'}">${esc(m.code)} ${m.used}/${m.max}</span>`).join(' ')}</div>` : '';
       return `<div class="ccard ${isOpen ? '' : 'go'}" ${isOpen ? '' : `data-go="1" role="button" tabindex="0"`}>
       <div class="cc-top"><span class="cc-name">${esc(c.name)}</span>${isOpen ? '' : c.ended ? '<span class="badge gray">Đã kết thúc</span>' : '<span class="badge ok">Đã tham gia</span>'}</div>
       <div class="cc-meta"><div><span>Thời gian</span>${esc(fmtRange(c))}</div>
         ${c.location ? `<div><span>Địa điểm</span>${esc(c.location)}</div>` : ''}
         ${(c.teachers || []).length ? `<div><span>Giảng viên</span>${esc(c.teachers.join(', '))}</div>` : ''}</div>
       ${isOpen ? `<button class="btn pink" data-reg="${c.id}" style="width:100%;margin-top:10px">Đăng ký lớp này</button>`
-        : `<div class="cc-prog"><div class="bar"><i style="width:${pct}%"></i></div><div class="small">Đã điểm danh <b>${c.attended}/${c.total_sessions}</b> buổi · <u>Bấm để điểm danh</u></div></div>`}
+        : `<div class="cc-prog"><div class="bar"><i style="width:${pct}%"></i></div><div class="small">Đã điểm danh <b>${att}/${tot}</b> buổi · <u>Bấm để điểm danh</u></div>${absLine}${warn}</div>`}
     </div>`;
     };
     const section = (title, list, isOpen, empty) => `<div class="card"><h3>${title}</h3>${list.length ? group(list).map(([k, items]) =>

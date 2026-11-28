@@ -1158,3 +1158,35 @@ begin
     execute d;
   end if;
 end $$;
+
+-- v56: học viên xem số buổi vắng theo module của chính mình (trang chủ)
+create or replace function public.my_absences()
+returns jsonb language sql stable security definer set search_path = public as $$
+with me as (select student_code from profiles where id = auth.uid() and role = 'student'),
+base as (
+  select cs.class_id, s.id sid, s.opened_at, s.counts_absent, s.node_id,
+    coalesce(p.id, n.id) mod_id, coalesce(p.code, n.code) mod_code, coalesce(p.max_absent, n.max_absent) mod_max,
+    ct.max_absent legacy_max,
+    exists (select 1 from attendance a where a.session_id = s.id and a.student_code = cs.student_code) att
+  from class_students cs
+  join me on me.student_code = cs.student_code
+  join classes c on c.id = cs.class_id
+  join class_types ct on ct.id = c.class_type_id
+  join class_sessions s on s.class_id = cs.class_id
+  left join course_nodes n on n.id = s.node_id
+  left join course_nodes p on p.id = n.parent_id
+  where (cs.node_ids is null or cardinality(cs.node_ids) = 0 or s.node_id = any(cs.node_ids) or n.parent_id = any(cs.node_ids))
+    and not (cs.added_at is not null and s.opened_at is not null and s.opened_at < cs.added_at
+             and not exists (select 1 from attendance a where a.session_id = s.id and a.student_code = cs.student_code))
+),
+mods as (
+  select class_id, coalesce(mod_code, 'Cả khoá') code, coalesce(mod_max, case when mod_id is null then legacy_max else 1 end, case when mod_id is null then null else 1 end) mx,
+    count(*) filter (where opened_at is not null and counts_absent is not false and not att) used
+  from base group by class_id, mod_id, mod_code, mod_max, legacy_max
+)
+select coalesce(jsonb_agg(jsonb_build_object('class_id', c.class_id, 'attended', c.att, 'total', c.tot,
+  'mods', (select coalesce(jsonb_agg(jsonb_build_object('code', m.code, 'used', m.used, 'max', m.mx) order by m.code), '[]'::jsonb) from mods m where m.class_id = c.class_id))), '[]'::jsonb)
+from (select class_id, count(*) tot, count(*) filter (where att) att from base group by class_id) c;
+$$;
+revoke all on function public.my_absences() from public, anon;
+grant execute on function public.my_absences() to authenticated;
