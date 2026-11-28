@@ -257,7 +257,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-30';
+  const APP_VERSION = '2026.11.28-31';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -311,6 +311,10 @@
           const code = isEmail ? '' : normCode(idRaw);
           const email = isEmail ? idRaw : codeToEmail(code);
           let { error } = await db.auth.signInWithPassword({ email, password });
+          // Mật khẩu mặc định là mã học viên: gõ thiếu số 0 ở đầu thì tự bổ sung rồi thử lại
+          if (error && !isEmail && /^\d+$/.test(password.trim()) && normCode(password) !== password) {
+            ({ error } = await db.auth.signInWithPassword({ email, password: normCode(password) }));
+          }
           // Lần đầu: học viên chưa có tài khoản, mật khẩu = mã học viên -> tự tạo tài khoản mặc định
           if (error && !isEmail && /Invalid login/i.test(error.message) && normCode(password) === code) {
             const r = await db.auth.signUp({ email, password: code, options: { data: { student_code: code } } });
