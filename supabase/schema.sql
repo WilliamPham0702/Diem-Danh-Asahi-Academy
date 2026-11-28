@@ -1238,3 +1238,55 @@ begin
   end loop;
   return jsonb_build_object('added', v_added, 'updated', v_upd, 'skipped', v_skip, 'missing', to_jsonb(v_missing));
 end $$;
+
+-- ===== v63: kết quả MOF quyết định vào M2 + tạo lớp từ Hồ sơ lớp =====
+alter table public.class_students add column if not exists mof_result text;
+alter table public.class_students drop constraint if exists class_students_mof_result_check;
+alter table public.class_students add constraint class_students_mof_result_check
+  check (mof_result is null or mof_result in ('dau','rot','vang'));
+
+create or replace function public.in_scope(p_class uuid, p_node_ids uuid[], p_mof text, p_session_node uuid)
+returns boolean language plpgsql stable security definer set search_path to 'public' as $$
+declare v_type uuid; v_first uuid; v_mod uuid; v_base boolean;
+begin
+  select class_type_id into v_type from classes where id = p_class;
+  if v_type is null or not exists (select 1 from course_nodes where class_type_id = v_type) then return true; end if;
+  if p_node_ids is null or cardinality(p_node_ids) = 0 then v_base := true;
+  else v_base := p_session_node is not null and (p_session_node = any(p_node_ids)
+       or exists (select 1 from course_nodes n where n.id = p_session_node and n.parent_id = any(p_node_ids))); end if;
+  if not v_base then return false; end if;
+  if p_mof in ('rot','vang') then
+    select id into v_first from course_nodes where class_type_id = v_type and parent_id is null order by sort_no, code limit 1;
+    select coalesce(parent_id, id) into v_mod from course_nodes where id = p_session_node;
+    if v_mod is not null and v_mod <> v_first and (p_node_ids is null or cardinality(p_node_ids) = 0 or v_first = any(p_node_ids)) then return false; end if;
+  end if;
+  return true;
+end $$;
+
+create or replace function public.set_mof_results(p_class uuid, p_results jsonb)
+returns integer language plpgsql security definer set search_path to 'public' as $$
+declare k text; v text; n int := 0;
+begin
+  if not public.can_manage_class(p_class) then raise exception 'FORBIDDEN'; end if;
+  for k, v in select key, value from jsonb_each_text(coalesce(p_results, '{}'::jsonb)) loop
+    if v is not null and v not in ('dau','rot','vang','') then raise exception 'INVALID_MOF'; end if;
+    update class_students set mof_result = nullif(v, '') where class_id = p_class and student_code = k;
+    if found then n := n + 1; end if;
+  end loop;
+  return n;
+end $$;
+
+create or replace function public.apply_class_file(p_class uuid, p_dates jsonb, p_location text, p_teacher text)
+returns void language plpgsql security definer set search_path to 'public' as $$
+begin
+  if not public.can_manage_class(p_class) then raise exception 'FORBIDDEN'; end if;
+  if p_dates is not null then
+    update class_sessions s set session_date = (p_dates ->> s.session_no::text)::date
+     where s.class_id = p_class and p_dates ? s.session_no::text;
+  end if;
+  if coalesce(p_location, '') <> '' then update classes set location = p_location where id = p_class; end if;
+  if coalesce(p_teacher, '') <> '' then update class_sessions set teacher_email = lower(p_teacher) where class_id = p_class and opened_at is null; end if;
+end $$;
+
+-- check_in: điều kiện module dùng in_scope(cs.class_id, cs.node_ids, cs.mof_result, sess.node_id) -> status 'not_in_module'
+-- my_absences: WHERE dùng public.in_scope(cs.class_id, cs.node_ids, cs.mof_result, s.node_id) (xem hàm đang chạy trên DB)

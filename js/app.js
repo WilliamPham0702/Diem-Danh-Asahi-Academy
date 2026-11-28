@@ -282,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-62';
+  const APP_VERSION = '2026.11.28-63';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -789,6 +789,57 @@
     return out;
   }
 
+  // Xoá: luôn hỏi xác nhận; việc nghiêm trọng (serious) phải nhập mã 0702
+  const DEL_CODE = '0702';
+  function guardDelete(msg, serious) {
+    if (!confirm(msg + '\n\nBạn có chắc chắn muốn xoá không?')) return false;
+    if (!serious) return true;
+    const c = prompt('Việc này ảnh hưởng nghiêm trọng đến hệ thống. Nhập mã xác nhận để tiếp tục:');
+    if (c === null) return false;
+    if (String(c).trim() !== DEL_CODE) { toast('Mã xác nhận không đúng, chưa xoá gì', 'err'); return false; }
+    return true;
+  }
+  // Kết quả MOF trong file: Đậu / Rớt / Vắng thi -> dau / rot / vang
+  function mapMof(v) {
+    const k = norm(String(v || ''));
+    if (!k) return null;
+    if (k.startsWith('dau') || k === 'pass' || k === 'dat') return 'dau';
+    if (k.startsWith('rot') || k === 'fail') return 'rot';
+    if (k.startsWith('vang')) return 'vang';
+    return null;
+  }
+  const MOF_LABEL = { dau: 'Đậu', rot: 'Rớt', vang: 'Vắng thi' };
+  // Excel serial / dd/mm/yyyy / yyyy-mm-dd -> yyyy-mm-dd
+  function toIso(v) {
+    if (v == null || v === '') return null;
+    if (typeof v === 'number') return new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 86400000).toISOString().slice(0, 10);
+    if (v instanceof Date) return new Date(Date.UTC(v.getFullYear(), v.getMonth(), v.getDate())).toISOString().slice(0, 10);
+    const t = String(v).trim(); let m;
+    if ((m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+    if ((m = t.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})/))) return `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+    return null;
+  }
+  // Đọc sheet THONG TIN LOP của file Hồ sơ lớp; trả null nếu file không có sheet này
+  async function readClassInfo(file) {
+    const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    const name = wb.SheetNames.find((n) => norm(n) === 'thongtinlop');
+    if (!name) return null;
+    const g = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '', raw: true });
+    const info = { days: [] };
+    g.forEach((row) => {
+      const k = norm(String(row[0] || '')); const v = row[1];
+      if (k.includes('malop')) info.code = String(v).trim().toUpperCase();
+      else if (k.includes('chuongtrinh')) info.program = String(v).trim();
+      else if (k.includes('gvcn')) info.teacher = String(v).trim();
+      else if (k.includes('ngaybatdau')) info.start = toIso(v);
+      else if (k.includes('ngayketthuc')) info.end = toIso(v);
+      else if (k.includes('diadiem')) info.location = String(v).trim();
+      else if (k.includes('ngaythimof')) info.mofDate = toIso(v);
+      const no = Number(row[3]); const d = toIso(row[4]);
+      if (Number.isInteger(no) && no > 0 && d && String(row[3]).trim() !== '') info.days.push({ no, date: d });
+    });
+    return info;
+  }
   // Nhận cả file mẫu của mình lẫn file "Hồ sơ lớp" nhiều sheet (lấy sheet DS HOC VIEN: Mã số tạm + Họ và tên)
   const isCodeHead = (k) => k.includes('mahocvien') || k === 'mahv' || k === 'mshv' || k === 'masotam' || k === 'maso';
   const isNameHead = (k) => k.includes('hoten') || k.includes('hovaten') || k.includes('tenhocvien');
@@ -804,18 +855,20 @@
     const hoso = (grid[hi] || []).some((c) => norm(String(c)) === 'masotam');
     const heads = (grid[hi] || []).map((h) => String(h).trim());
     const rows = grid.slice(hi + 1).map((arr) => { const o = {}; heads.forEach((h, j) => { if (h) o[h] = arr[j] ?? ''; }); return o; });
-    const seen = new Set(); const ok = []; const bad = []; let skipped = 0;
+    const seen = new Set(); const ok = []; const bad = []; let skipped = 0; const meta = {};
     rows.forEach((r, i) => {
       if (!Object.values(r).some((v) => String(v).trim())) return; // dòng trống
       const s = mapRow(r, hoso);
       if (!s.code || !s.full_name) { bad.push(i + hi + 2); return; }
       if (seen.has(s.code)) { skipped++; return; }
       seen.add(s.code); ok.push(s);
+      const gk = Object.keys(r).find((k) => norm(k) === 'nhom'); const mk = Object.keys(r).find((k) => norm(k).startsWith('ketquamof'));
+      meta[s.code] = { group: gk ? norm(String(r[gk])) : '', mof: mk ? mapMof(r[mk]) : null };
     });
     // File lỗi thì không cho tiếp tục (không tạo lớp, không nhập)
     if (!ok.length) throw new Error('File không có học viên hợp lệ. Cần các cột "Mã học viên" và "Họ và tên" (dòng đầu là tiêu đề cột).');
     if (bad.length) throw new Error(`File lỗi: dòng ${bad.slice(0, 8).join(', ')}${bad.length > 8 ? '...' : ''} thiếu mã học viên hoặc họ tên. Hãy sửa file rồi tải lại.`);
-    return { rows: ok, skipped, hoso };
+    return { rows: ok, skipped, hoso, meta };
   }
 
   async function importStudents(file) {
@@ -871,6 +924,19 @@
   function nodeCode(courseName, n, all) {
     const p = n.parent_id ? all.find((x) => x.id === n.parent_id) : null;
     return [courseName, p && p.code, n.code].filter(Boolean).join('-');
+  }
+  // như inNodes nhưng thêm luật MOF: M1 rớt/vắng thi thì không học các module sau M1
+  function inSess(r, sx, cn) {
+    if (!cn.length) return true;
+    if (!inNodes(r.node_ids, sx.node_id, cn)) return false;
+    if (r.mof_result !== 'rot' && r.mof_result !== 'vang') return true;
+    const l2 = cn.filter((x) => !x.parent_id).sort((a, b) => a.sort_no - b.sort_no);
+    if (l2.length < 2) return true;
+    const first = l2[0];
+    if (r.node_ids && r.node_ids.length && !r.node_ids.includes(first.id)) return true; // vào từ M2 → không áp dụng
+    const n = cn.find((x) => x.id === sx.node_id);
+    const mod = n && (n.parent_id ? n.parent_id : n.id);
+    return mod === first.id;
   }
   // học viên thuộc nodeIds (null = tất cả) có học buổi thuộc node này không
   function inNodes(nodeIds, nodeId, courseNodes) {
@@ -986,6 +1052,7 @@
         <label style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="ce" style="width:auto"> Mở đăng ký cho học viên tự đăng ký lớp này</label>
         <label>Danh sách học viên (file Excel)</label><input id="cx" type="file" accept=".xlsx,.xls,.csv">
         <div class="small muted">Cột: Mã học viên, Họ và tên, Chức danh. Cột Mã học viên nên để định dạng Text để giữ số 0 ở đầu. <a href="#" id="tpl">Tải file mẫu</a></div>
+        <div id="cinfo" class="small" style="margin-top:6px"></div>
         <div class="row" style="margin-top:14px"><button class="btn pink" id="ok">Tạo lớp</button>
           <button type="button" class="btn ghost" id="cancel">Hủy</button></div>
       </form>`, (m, close) => {
@@ -1009,12 +1076,34 @@
       const drawNP = () => { const tid = $('#ct', m).value; const ty = types.find((x) => x.id === tid);
         renderNodePicker(m, allNodes.filter((n) => n.class_type_id === tid), ty && ty.name, sessList.filter((x) => x.class_type_id === tid)); };
       $('#cd', m).onchange = autoGrad; $('#ct', m).onchange = () => { autoGrad(); drawNP(); }; autoGrad(); drawNP();
+      // File Hồ sơ lớp (có sheet THONG TIN LOP): tự điền tên lớp, khoá học, ngày, địa điểm
+      let classInfo = null;
+      $('#cx', m).onchange = async () => {
+        classInfo = null; $('#cinfo', m).innerHTML = '';
+        const f = $('#cx', m).files[0]; if (!f) return;
+        try { classInfo = await readClassInfo(f); } catch (e) { return; }
+        if (!classInfo) return;
+        const i = classInfo; const toks = (i.code || '').split(/[-_\s]+/).filter(Boolean);
+        const ty = types.find((t) => t.name.split('-').every((p) => toks.includes(p.toUpperCase())) && t.name.includes('-')) || types.find((t) => toks.includes(t.name.toUpperCase()));
+        if (i.code) $('#cn', m).value = i.code;
+        if (ty) { $('#ct', m).value = ty.id; drawNP(); }
+        const d1 = i.days.length ? i.days.slice().sort((a, b) => a.no - b.no)[0].date : i.start;
+        if (d1) { $('#cd', m).value = d1; autoGrad(); }
+        if (i.end) { $('#cg', m).value = i.end; gradTouched = true; }
+        if (i.location) $('#cl', m).value = i.location;
+        $('#cinfo', m).innerHTML = `Đã đọc sheet THONG TIN LOP: <b>${esc(i.code || '')}</b>${ty ? '' : ' · <span style="color:#c0392b">chưa khớp khoá học, hãy chọn tay</span>'}${i.teacher ? ' · GVCN ' + esc(i.teacher) : ''}`;
+      };
       $('#cf', m).onsubmit = (e) => {
         e.preventDefault();
         busy($('#ok', m), async () => {
-          let codes = [];
+          let codes = []; let metaAll = {}; let m2codes = [];
           const f = $('#cx', m).files[0];
-          if (f) { const r = await importStudents(f); codes = codes.concat(r.codes); if (r.skipped) toast(`Bỏ qua ${r.skipped} dòng thiếu thông tin`); }
+          if (f) {
+            const r = await readStudentsFile(f); const st = await addToStore(r.rows);
+            metaAll = r.meta || {}; if (r.skipped) toast(`Bỏ qua ${r.skipped} dòng thiếu thông tin`);
+            const hasM2 = nodePickerValue(m) == null && allNodes.filter((n) => n.class_type_id === $('#ct', m).value && !n.parent_id).length >= 2;
+            st.codes.forEach((c) => { if (hasM2 && (metaAll[c] || {}).group === 'm2moi') m2codes.push(c); else codes.push(c); });
+          }
           codes = Array.from(new Set(codes));
           if (!codes.length && !confirm('Chưa có học viên nào (chưa chọn file Excel). Vẫn tạo lớp? Sau đó có thể thêm học viên trong lớp.')) return;
           const id = await q(db.rpc('create_class', {
@@ -1022,6 +1111,20 @@
             p_codes: codes, p_grad: $('#cg', m).value || null, p_nodes: nodePickerValue(m),
           }));
           await q(db.from('classes').update({ location: $('#cl', m).value.trim() || null, open_enrollment: $('#ce', m).checked }).eq('id', id));
+          if (m2codes.length) {
+            const l2 = allNodes.filter((n) => n.class_type_id === $('#ct', m).value && !n.parent_id).sort((x, y) => (x.sort_no || 0) - (y.sort_no || 0));
+            await q(db.rpc('add_class_students', { p_class: id, p_codes: m2codes, p_nodes: [l2[1].id] }));
+          }
+          if (classInfo) {
+            const dates = {}; const dm = {}; classInfo.days.forEach((d) => { dm[d.no] = d.date; });
+            sessList.filter((x) => x.class_type_id === $('#ct', m).value).forEach((x) => { if (x.day_no && dm[x.day_no]) dates[x.session_no] = dm[x.day_no]; });
+            let tEmail = null;
+            if (classInfo.teacher) { try { const ts = await q(db.rpc('list_teachers')); const t = ts.find((x) => norm(x.full_name || '') === norm(classInfo.teacher)); if (t) tEmail = t.email; else toast('Không tìm thấy GVCN "' + classInfo.teacher + '" trong hệ thống, giữ người tạo lớp', 'err'); } catch (er) { /* bỏ qua */ } }
+            await q(db.rpc('apply_class_file', { p_class: id, p_dates: dates, p_location: classInfo.location || null, p_teacher: tEmail }));
+          }
+          const mofs = {}; Object.entries(metaAll).forEach(([c, mt]) => { if (mt.mof) mofs[c] = mt.mof; });
+          if (Object.keys(mofs).length) await q(db.rpc('set_mof_results', { p_class: id, p_results: mofs }));
+          codes = codes.concat(m2codes);
           const miss = codes.length ? await missingCodes(codes) : [];
           close();
           toast(codes.length ? `Đã tạo lớp, ${codes.length - miss.length} học viên` : 'Đã tạo lớp', 'ok');
@@ -1036,7 +1139,7 @@
   async function viewClass(el, id) {
     const cls = await q(db.from('classes').select('*, class_types(name, max_absent)').eq('id', id).single());
     const sessions = await q(db.from('class_sessions').select('*').eq('class_id', id).order('session_no'));
-    const roster = await q(db.from('class_students').select('student_code, node_ids, added_at, students(*)').eq('class_id', id));
+    const roster = await q(db.from('class_students').select('student_code, node_ids, added_at, mof_result, students(*)').eq('class_id', id));
     const cnodes = cls.class_type_id ? (await loadNodes()).filter((n) => n.class_type_id === cls.class_type_id) : [];
     const nodeOfSession = (sx) => { const n = cnodes.find((x) => x.id === sx.node_id); return n ? nodeCode(cls.class_types?.name, n, cnodes) : ''; };
     const att = sessions.length ? await fetchAll(() => db.from('attendance')
@@ -1051,7 +1154,10 @@
       perStudent[a.student_code] = (perStudent[a.student_code] || 0) + 1;
     });
     const total = roster.length;
-    const inScope = (r, sx) => !cnodes.length || inNodes(r.node_ids, sx.node_id, cnodes);
+    const inScope = (r, sx) => inSess(r, sx, cnodes);
+    const l2c = cnodes.filter((n) => !n.parent_id).sort((x, y) => (x.sort_no || 0) - (y.sort_no || 0));
+    const hasMof = l2c.length >= 2;
+    const mofApplies = (r) => hasMof && (!r.node_ids || !r.node_ids.length || r.node_ids.includes(l2c[0].id));
     const perTotal = {}; sessions.forEach((sx) => { perTotal[sx.id] = roster.filter((r) => inScope(r, sx)).length; });
     const attSet = new Set(att.map((a) => a.session_id + '|' + a.student_code));
     const attMap = {}; att.forEach((a) => { attMap[a.session_id + '|' + a.student_code] = a; });
@@ -1127,14 +1233,15 @@
             <td class="n"><b>${perSession[s.id] || 0}/${perTotal[s.id]}</b></td>
             <td class="s-act">${ended ? '' : qrButtons(s, true)} <a class="btn sm" href="#/session/${s.id}">Chi tiết</a></td></tr>`).join('')}</tbody></table></div>
       </div>
-      <div class="card"><div class="row between"><h3 style="margin:0">Học viên (${total})</h3><button class="btn pink sm" id="add">+ Thêm học viên / up danh sách</button></div>
+      <div class="card"><div class="row between"><h3 style="margin:0">Học viên (${total})</h3><span>${hasMof && !ended ? '<button class="btn ghost sm" id="mofx">Kết quả MOF từ file</button><input type="file" id="mofxf" accept=".xlsx,.xls,.csv" hidden> ' : ''}<button class="btn pink sm" id="add">+ Thêm học viên / up danh sách</button></div></span></div>
         <div class="small muted" style="margin-bottom:6px"><span class="sc ok inl">✓</span> đúng giờ &nbsp;<span class="sc late inl">M</span> muộn &nbsp;<span class="sc abs inl">V</span> vắng &nbsp;<span class="sc none inl">·</span> chưa học</div>
         <div class="plist">
           <div class="trow thead"><div>Học viên</div><div>Có mặt / Vắng</div><div>Từng buổi ${ended ? '' : '(bấm vào ô để điểm danh tay / hủy)'}</div><div></div></div>
           ${roster.map((r) => { const s = r.students || {}; return `<div class="trow">
             <div class="t-main"><b>${esc(s.full_name || r.student_code)}</b>
               <div class="small muted">${esc(r.student_code)}${s.title ? ' · ' + esc(s.title) : ''}</div>
-              ${cnodes.length ? `<div class="pi-st">${nodeTags(r.node_ids, cnodes)} <span class="small muted">${sessions.filter((x) => inNodes(r.node_ids, x.node_id, cnodes)).length} buổi</span> ${ended ? '' : `<a href="#" data-nodes="${esc(r.student_code)}" class="small">Đổi module</a>`}</div>` : ''}</div>
+              ${cnodes.length ? `<div class="pi-st">${nodeTags(r.node_ids, cnodes)} <span class="small muted">${sessions.filter((x) => inSess(r, x, cnodes)).length} buổi</span> ${ended ? '' : `<a href="#" data-nodes="${esc(r.student_code)}" class="small">Đổi module</a>`}</div>` : ''}
+              ${mofApplies(r) ? `<div class="small">Kết quả MOF: <select data-mof="${esc(r.student_code)}" ${ended ? 'disabled' : ''} style="width:auto;padding:2px 6px"><option value="">Chưa có</option>${['dau', 'rot', 'vang'].map((v) => `<option value="${v}"${r.mof_result === v ? ' selected' : ''}>${MOF_LABEL[v]}</option>`).join('')}</select>${r.mof_result === 'rot' || r.mof_result === 'vang' ? ' <span class="badge bad">Không học ' + esc(l2c.slice(1).map((x) => x.code).join(', ')) + '</span>' : ''}</div>` : ''}</div>
             <div class="small">Có mặt <b>${perStudent[r.student_code] || 0}/${sessions.filter((sx) => inScope(r, sx)).length}</b><br>Vắng ${mstat[r.student_code].length ? mstat[r.student_code].map((e) => `<span class="badge ${e.max != null && e.used > e.max ? 'bad' : e.max != null && e.used >= 1 && e.used === e.max ? 'warn' : 'gray'}" title="${esc(e.label)}: vắng ${e.used}, được vắng ${e.max == null ? '—' : e.max}">${esc(e.label)} ${e.used}${e.max != null ? '/' + e.max : ''}</span>`).join(' ') : '<b>0</b>'}</div>
             <div>${sessGrid(sessions, attMap, r.student_code, !ended, (sx) => inScope(r, sx) && !exempt(r, sx))}</div>
             <div class="t-act">${hasDevice.has(r.student_code) ? `<button class="btn sm ghost" data-reset="${esc(r.student_code)}">Đặt lại thiết bị</button>` : ''}
@@ -1143,6 +1250,17 @@
         </div></div>`;
 
     $$('[data-goto]', el).forEach((a) => { a.onclick = (e) => { e.preventDefault(); const k = a.dataset.goto; const row = $$('.trow', el).find((d) => d.textContent.includes(k)); if (row) { row.scrollIntoView({ behavior: 'smooth', block: 'center' }); row.classList.add('flash'); setTimeout(() => row.classList.remove('flash'), 1800); } }; });
+    $$('[data-mof]', el).forEach((sel) => { sel.onchange = () => busy(sel, async () => {
+      await q(db.rpc('set_mof_results', { p_class: id, p_results: { [sel.dataset.mof]: sel.value } })); toast('Đã lưu kết quả MOF', 'ok'); render(); }); });
+    if ($('#mofx', el)) {
+      $('#mofx', el).onclick = () => $('#mofxf', el).click();
+      $('#mofxf', el).onchange = (e) => { const f = e.target.files[0]; if (!f) return; busy($('#mofx', el), async () => {
+        const { meta } = await readStudentsFile(f);
+        const res = {}; const inClass = new Set(roster.map((r) => r.student_code)); let miss = 0;
+        Object.entries(meta).forEach(([c, m]) => { if (!m.mof) return; if (inClass.has(c)) res[c] = m.mof; else miss++; });
+        if (!Object.keys(res).length) { toast('File không có cột "Kết quả MOF" nào có dữ liệu cho học viên trong lớp', 'err'); return; }
+        const n = await q(db.rpc('set_mof_results', { p_class: id, p_results: res }));
+        toast(`Đã cập nhật MOF cho ${n} học viên${miss ? `, ${miss} mã không có trong lớp` : ''}`, 'ok'); render(); }); }; }
     $$('[data-nodes]', el).forEach((a) => { a.onclick = (e) => {
       e.preventDefault(); const r = roster.find((x) => x.student_code === a.dataset.nodes);
       editStudentNodes(id, r.student_code, (r.students && r.students.full_name) || r.student_code, r.node_ids, cnodes, render); }; });
@@ -1158,7 +1276,7 @@
           ${a ? '<button class="btn danger" id="cu">Hủy điểm danh</button>' : '<button class="btn pink" id="cm">Điểm danh tay</button>'}
           <button class="btn ghost" id="cx">Đóng</button></div>`, (m, close) => {
         $('#cx', m).onclick = close;
-        if (a) $('#cu', m).onclick = () => busy($('#cu', m), async () => { await q(db.from('attendance').delete().eq('id', a.id)); close(); toast('Đã hủy điểm danh', 'ok'); render(); });
+        if (a) $('#cu', m).onclick = () => { if (!guardDelete('Hủy điểm danh của học viên này ở buổi này?', false)) return; busy($('#cu', m), async () => { await q(db.from('attendance').delete().eq('id', a.id)); close(); toast('Đã hủy điểm danh', 'ok'); render(); }); };
         else $('#cm', m).onclick = () => busy($('#cm', m), async () => {
           await q(db.from('attendance').insert({ session_id: sess.id, student_code: code, student_name: stu.full_name || code, source: 'manual' }));
           close(); toast('Đã điểm danh tay', 'ok'); render(); });
@@ -1194,7 +1312,7 @@
     $('#exp').onclick = (e) => busy(e.target, () => exportReport([id]));
     $('#add').onclick = () => openAddStudents(id);
     $('#del').onclick = (e) => {
-      if (!confirm('Xóa lớp này cùng toàn bộ dữ liệu điểm danh? Không thể hoàn tác.')) return;
+      if (!guardDelete('Xóa lớp này cùng toàn bộ dữ liệu điểm danh? Không thể hoàn tác.', true)) return;
       busy(e.target, async () => { await q(db.from('classes').delete().eq('id', id)); toast('Đã xóa lớp', 'ok'); nav('classes'); });
     };
     $$('[data-date]', el).forEach((i) => { i.onchange = () => busy(null, async () => {
@@ -1220,7 +1338,7 @@
       await q(db.rpc('reset_device', { p_student_code: b.dataset.reset })); toast('Đã đặt lại thiết bị', 'ok'); render(); }); });
     $$('[data-resetpw]', el).forEach((b) => { b.onclick = () => resetPassword(b, b.dataset.resetpw); });
     $$('[data-rm]', el).forEach((b) => { b.onclick = () => {
-      if (!confirm('Xóa học viên này khỏi lớp? Dữ liệu điểm danh của học viên trong lớp này cũng bị xóa.')) return;
+      if (!guardDelete('Xóa học viên này khỏi lớp? Dữ liệu điểm danh của học viên trong lớp này cũng bị xóa.', false)) return;
       busy(b, async () => {
         const sids = sessions.map((x) => x.id);
         if (sids.length) await q(db.from('attendance').delete().eq('student_code', b.dataset.rm).in('session_id', sids));
@@ -1343,7 +1461,7 @@
     const sess = await q(db.from('class_sessions').select('*, classes(id, name, ended_at)').eq('id', id).single());
     const cls = sess.classes;
     const ended = !!cls.ended_at;
-    const roster = await q(db.from('class_students').select('student_code, node_ids, students(*)').eq('class_id', cls.id));
+    const roster = await q(db.from('class_students').select('student_code, node_ids, mof_result, students(*)').eq('class_id', cls.id));
     const clsRow = await q(db.from('classes').select('class_type_id').eq('id', cls.id).single());
     const cn = clsRow.class_type_id ? (await loadNodes()).filter((n) => n.class_type_id === clsRow.class_type_id) : [];
     const att = await q(db.from('attendance').select('*').eq('session_id', id));
@@ -1352,7 +1470,7 @@
     const stat = { 'Đúng giờ': 0, 'Muộn': 0, 'Vắng': 0 };
     const rows = roster.map((r) => {
       const a = map[r.student_code];
-      if (cn.length && !inNodes(r.node_ids, sess.node_id, cn)) return { r, a: null, st: 'Không học', off: true };
+      if (cn.length && !inSess(r, sess, cn)) return { r, a: null, st: 'Không học', off: true };
       const st = lateInfo(sess, cls, a);
       if (stat[st] !== undefined) stat[st]++; else if (st.startsWith('Có mặt')) stat['Đúng giờ']++;
       return { r, a, st };
@@ -1390,7 +1508,7 @@
       await q(db.from('attendance').insert({ session_id: id, student_code: b.dataset.manual, student_name: b.dataset.name, source: 'manual' }));
       render(); }); });
     $$('[data-undo]', el).forEach((b) => { b.onclick = () => {
-      if (!confirm('Hủy điểm danh của học viên này?')) return;
+      if (!guardDelete('Hủy điểm danh của học viên này?', false)) return;
       busy(b, async () => { await q(db.from('attendance').delete().eq('id', b.dataset.undo)); render(); }); }; });
   }
 
@@ -1626,10 +1744,10 @@
         await q(db.rpc('reset_device', { p_student_code: b.dataset.reset })); toast('Đã đặt lại thiết bị', 'ok'); render(); }); });
       $$('[data-resetpw]', el).forEach((b) => { b.onclick = () => resetPassword(b, b.dataset.resetpw); });
       $$('[data-deluser]', el).forEach((b) => { b.onclick = () => {
-        if (!confirm('Xóa tài khoản đăng nhập của học viên này? (Thông tin trong danh sách vẫn giữ)')) return;
+        if (!guardDelete('Xóa tài khoản đăng nhập của học viên này? (Thông tin trong danh sách vẫn giữ)', false)) return;
         busy(b, async () => { await q(db.rpc('admin_delete_user', { p_user: b.dataset.deluser })); toast('Đã xóa tài khoản', 'ok'); render(); }); }; });
       $$('[data-delstu]', el).forEach((b) => { b.onclick = () => {
-        if (!confirm('Xóa học viên này khỏi hệ thống (và khỏi mọi lớp)? Lịch sử điểm danh vẫn giữ.')) return;
+        if (!guardDelete('Xóa học viên này khỏi hệ thống (và khỏi mọi lớp)? Lịch sử điểm danh vẫn giữ.', true)) return;
         busy(b, async () => { await q(db.from('students').delete().eq('code', b.dataset.delstu)); toast('Đã xóa', 'ok'); render(); }); }; });
     }
     draw();
@@ -1801,7 +1919,7 @@
       const cls = await q(cq);
       if (!cls.length) throw new Error('Không có lớp nào');
       const sessions = await fetchAll(() => { const b = db.from('class_sessions').select('id, class_id, session_date, teacher_email, opened_at, node_id, counts_absent').order('id'); return cid ? b.eq('class_id', cid) : b; });
-      const roster = await fetchAll(() => { const b = db.from('class_students').select('class_id, node_ids, added_at, students(code, full_name, title)').order('class_id').order('student_code'); return cid ? b.eq('class_id', cid) : b; });
+      const roster = await fetchAll(() => { const b = db.from('class_students').select('class_id, node_ids, added_at, mof_result, students(code, full_name, title)').order('class_id').order('student_code'); return cid ? b.eq('class_id', cid) : b; });
       const att = await fetchAll(() => { const b = db.from('attendance').select('session_id, student_code, class_sessions!inner(class_id)').order('id'); return cid ? b.eq('class_sessions.class_id', cid) : b; });
       const tname = {}; teachers.forEach((x) => { tname[String(x.email).toLowerCase()] = x.full_name || x.email; });
       const attCnt = {}; const sc = {}; sessions.forEach((x) => { sc[x.id] = x.class_id; });
@@ -1825,7 +1943,7 @@
         if (stf && (stf === 'act') !== i.active) return;
         if (key && !norm(st.code + ' ' + st.full_name).includes(key)) return;
         const cn = i.c.class_type_id ? nodesAll.filter((n) => n.class_type_id === i.c.class_type_id) : [];
-        const mine = i.ss.filter((x) => (!cn.length || inNodes(r.node_ids, x.node_id, cn)) && !(r.added_at && x.opened_at && x.opened_at < r.added_at && !attKey.has(x.id + '|' + st.code)));
+        const mine = i.ss.filter((x) => inSess(r, x, cn) && !(r.added_at && x.opened_at && x.opened_at < r.added_at && !attKey.has(x.id + '|' + st.code)));
         const mineIds = new Set(mine.map((x) => x.id));
         const present = att.filter((a) => a.student_code === st.code && mineIds.has(a.session_id)).length;
         const absentN = mine.filter((x) => x.opened_at && x.counts_absent !== false && !attKey.has(x.id + '|' + st.code)).length;
@@ -1928,7 +2046,7 @@
     const ids = classes.map((c) => c.id);
 
     const sessions = await fetchAll(() => { let b = db.from('class_sessions').select('*').order('id'); if (classIds) b = b.in('class_id', ids); return b; });
-    const roster = await fetchAll(() => { let b = db.from('class_students').select('class_id, node_ids, added_at, students(*)').order('class_id').order('student_code'); if (classIds) b = b.in('class_id', ids); return b; });
+    const roster = await fetchAll(() => { let b = db.from('class_students').select('class_id, node_ids, added_at, mof_result, students(*)').order('class_id').order('student_code'); if (classIds) b = b.in('class_id', ids); return b; });
     const allNodes = await loadNodes();
     const att = await fetchAll(() => { let b = db.from('attendance').select('*, class_sessions!inner(class_id)').order('id'); if (classIds) b = b.in('class_sessions.class_id', ids); return b; });
     const amap = {}; att.forEach((a) => { amap[a.session_id + '|' + a.student_code] = a; });
@@ -1949,7 +2067,7 @@
         const row = summary[key] = { 'Lớp': c.name, 'Mã HV': st.code, 'Họ tên': st.full_name, 'Chức danh': st.title || '', 'Module học': cn.length ? learnTxt(r.node_ids) : '',
           'Đúng giờ': 0, 'Muộn': 0, 'Vắng': 0, 'Vắng không tính': 0, 'Chưa mở': 0, mods: {} };
         for (const sx of sess) {
-          if (cn.length && !inNodes(r.node_ids, sx.node_id, cn)) continue; // buổi ngoài module của học viên
+          if (cn.length && !inSess(r, sx, cn)) continue; // buổi ngoài module của học viên
           const a = amap[sx.id + '|' + st.code];
           if (!a && r.added_at && sx.opened_at && sx.opened_at < r.added_at) continue; // buổi mở trước ngày vào lớp
           let status = lateInfo(sx, c, a);
@@ -2031,7 +2149,7 @@
     $$('[data-mx]', el).forEach((i) => { i.onchange = () => busy(null, async () => {
       await q(db.from('course_nodes').update({ max_absent: i.value === '' ? null : Number(i.value) }).eq('id', i.dataset.mx)); toast('Đã lưu số buổi được vắng', 'ok'); }); });
     $$('[data-del]', el).forEach((b) => { b.onclick = () => {
-      if (!confirm('Xóa khoá học này? Các lớp đã tạo vẫn giữ nguyên.')) return;
+      if (!guardDelete('Xóa khoá học này? Các lớp đã tạo vẫn giữ nguyên.', true)) return;
       busy(b, async () => { await q(db.from('class_types').delete().eq('id', b.dataset.del)); render(); }); }; });
     const openEditor = (t) => { courseEditor($('#newbox'), t, nodes.filter((n) => t && n.class_type_id === t.id), () => render()); $('#newbox').scrollIntoView({ behavior: 'smooth', block: 'start' }); };
     $$('[data-edit]', el).forEach((b) => { b.onclick = () => openEditor(types.find((x) => x.id === b.dataset.edit)); });
@@ -2149,7 +2267,7 @@
       });
     };
     $$('[data-deluser]', el).forEach((b) => { b.onclick = () => {
-      if (!confirm('Xóa tài khoản này? Các lớp họ đã tạo vẫn giữ lại nhưng không còn người phụ trách.')) return;
+      if (!guardDelete('Xóa tài khoản này? Các lớp họ đã tạo vẫn giữ lại nhưng không còn người phụ trách.', true)) return;
       busy(b, async () => { await q(db.rpc('admin_delete_user', { p_user: b.dataset.deluser })); toast('Đã xóa tài khoản', 'ok'); render(); }); }; });
     $$('[data-delmail]', el).forEach((b) => { b.onclick = () => busy(b, async () => {
       await q(db.from('allowed_staff').delete().eq('email', b.dataset.delmail)); render(); }); });
