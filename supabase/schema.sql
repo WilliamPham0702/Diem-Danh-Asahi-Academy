@@ -972,3 +972,5 @@ begin
   update public.class_sessions set closed = false, opened_at = coalesce(opened_at, now()) where id = p_session;
   return jsonb_build_object('token', public.make_token(p_session, extract(epoch from now())::bigint), 'class_name', cs.class_name, 'session_no', cs.session_no, 'content', cs.content);
 end $$;
+-- v42: thu hoi quyen goi RPC cua ham trigger
+revoke execute on function public.guard_session_update(), public.handle_new_user() from public, anon, authenticated;

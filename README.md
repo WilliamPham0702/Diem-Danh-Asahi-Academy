@@ -69,3 +69,15 @@ Repo > **Settings > Pages** > Source: nhánh `main`, thư mục `/ (root)`. Sau 
 - Giảng viên xem được toàn bộ danh sách học viên trong hệ thống, nhưng chỉ quản lý được lớp do mình tạo. Admin quản lý tất cả.
 - Gói free của Supabase tạm dừng dự án sau 1 tuần không hoạt động. Vào dashboard bấm **Restore**, dữ liệu vẫn còn.
 - Hãy xuất báo cáo Excel định kỳ để lưu bản sao dữ liệu.
+
+## Trợ giảng (v39 trở đi)
+
+- Admin vào **Nhân sự**, kéo xuống phần **Trợ giảng**, tìm học viên rồi bấm "Nâng lên trợ giảng". Trợ giảng vẫn là học viên, có thêm tab **Lịch dạy**.
+- Mỗi lớp có 1 trợ giảng (chọn trong trang lớp). Mỗi buổi chọn giảng viên, trợ giảng hoặc cả hai. Buổi không có ai thì không mở được QR.
+- Giảng viên và trợ giảng ở gần nhau (trong 200 m) thì mỗi người mở một QR riêng, cả hai đều điểm danh được. Ở xa nhau thì giảng viên được ưu tiên: giảng viên chưa mở QR thì trợ giảng mới mở được.
+
+## Sao lưu và khôi phục
+
+- Mã nguồn: các tag `v*` trên GitHub và file zip sao lưu.
+- Cơ sở dữ liệu: `supabase/schema.sql` dựng lại toàn bộ cấu trúc. Dữ liệu (học viên, điểm danh) xuất riêng, **không đưa lên repo** vì repo công khai.
+- Khôi phục: tạo dự án Supabase mới, chạy `schema.sql`, nhập dữ liệu, sửa `js/config.js`.
