@@ -496,3 +496,15 @@ input[type=checkbox], input[type=radio] { min-height: 0; }
 }
 details.more > summary { cursor: pointer; color: var(--navy); font-size: 13px; font-weight: 600; padding: 4px 0; }
 .pi { padding: 8px 10px; }
+
+/* ===== v44: bảng khoá học ===== */
+table.ctab { table-layout: fixed; width: 100%; font-size: 12px; margin-top: 8px; }
+table.ctab th, table.ctab td { padding: 5px 5px; border: 1px solid var(--line); vertical-align: top; word-break: break-word; }
+table.ctab th { white-space: nowrap; font-size: 11px; padding: 5px 3px; }
+table.ctab th:nth-child(1) { width: 11%; } table.ctab th:nth-child(2) { width: 17%; } table.ctab th:nth-child(3) { width: 13%; } table.ctab th:nth-child(4) { width: 17%; }
+table.ctab { word-break: normal; } table.ctab td.c1 { word-break: break-all; }
+table.ctab td.c1, table.ctab td.c2 { font-weight: 700; color: var(--navy); background: #f6f8fc; vertical-align: middle; text-align: center; }
+table.ctab td.n { text-align: center; color: var(--muted); }
+.cset { margin-top: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #f8f9fd; }
+.cset-i { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; }
+.cset-i input { width: 60px; min-height: 30px; padding: 2px 6px; }

@@ -282,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-43';
+  const APP_VERSION = '2026.11.28-44';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -1928,19 +1928,20 @@
     $('#t').innerHTML = types.length ? types.map((t) => {
       const tn = nodes.filter((n) => n.class_type_id === t.id);
       const l2 = tn.filter((n) => !n.parent_id);
-      const ss = t.class_type_sessions.sort((a, b) => a.session_no - b.session_no);
-      const line = (x) => `<li>${x.day_no ? `<b>Ngày ${x.day_no}${x.shift ? ' · ' + SHIFT_LABEL[x.shift] : ''}:</b> ` : ''}${esc(x.content)}</li>`;
-      const grp = (n) => { const kids = tn.filter((k) => k.parent_id === n.id); const own = ss.filter((x) => x.node_id === n.id);
-        return `<div style="margin-top:8px"><div class="row between"><b>${esc(t.name + '-' + n.code)}</b>
-          <span class="small">Được vắng <input type="number" min="0" value="${n.max_absent ?? ''}" data-mx="${n.id}" style="width:64px;min-height:30px;padding:2px 6px;display:inline-block"> buổi</span></div>
-          ${own.length ? `<ol class="small" style="margin:4px 0 0 18px" start="${own[0].session_no}">${own.map(line).join('')}</ol>` : ''}
-          ${kids.map((k) => `<div class="small" style="margin:4px 0 0 14px"><b>${esc(t.name + '-' + n.code + '-' + k.code)}</b>: ${ss.filter((x) => x.node_id === k.id).map((x) => 'buổi ' + x.session_no + ' ' + esc(x.content)).join('; ')}</div>`).join('')}</div>`; };
-      const orphan = ss.filter((x) => !x.node_id);
+      const ss = t.class_type_sessions.slice().sort((a, b) => a.session_no - b.session_no);
+      const info = ss.map((x) => { const n = tn.find((y) => y.id === x.node_id); const par = n && n.parent_id ? tn.find((y) => y.id === n.parent_id) : null;
+        return { x, c2: par ? par.code : (n ? n.code : ''), c3: par ? n.code : '' }; });
+      const span = (i) => { let k = 1; while (i + k < info.length && info[i + k].c2 === info[i].c2) k++; return k; };
+      const rows = info.map((r, i) => `<tr><td class="n">${r.x.session_no}</td>${i === 0 ? `<td rowspan="${info.length}" class="c1">${esc(t.name)}</td>` : ''}
+        ${i === 0 || info[i - 1].c2 !== r.c2 ? `<td rowspan="${span(i)}" class="c2">${esc(r.c2 || '—')}</td>` : ''}
+        <td class="c3">${esc(r.c3 || '—')}</td>
+        <td>${r.x.day_no ? `<b>Ngày ${r.x.day_no}${r.x.shift ? ' ' + SHIFT_LABEL[r.x.shift] : ''}:</b> ` : ''}${esc(r.x.content)}</td></tr>`).join('');
       return `<div style="border-top:1px solid var(--line);padding:10px 0">
         <div class="row between"><b>${esc(t.name)}</b> <span><span class="badge">${ss.length} buổi</span> <button class="btn sm danger" data-del="${t.id}">Xóa</button></span></div>
         <div class="muted small">${esc(t.description || '')}</div>
-        ${l2.map(grp).join('')}
-        ${orphan.length ? `<ol class="small" style="margin:6px 0 0 18px">${orphan.map(line).join('')}</ol>` : ''}</div>`; }).join('')
+        <div class="tbl-wrap"><table class="ctab"><tr><th>STT</th><th>Cấp 1</th><th>Cấp 2</th><th>Cấp 3</th><th>Nội dung</th></tr>${rows}</table></div>
+        <div class="cset"><b class="small">Cài đặt chung: số buổi được vắng</b>
+          <div class="row" style="margin-top:6px">${l2.map((n) => `<label class="cset-i">${esc(n.code)} <input type="number" min="0" value="${n.max_absent ?? ''}" data-mx="${n.id}"></label>`).join('')}</div></div></div>`; }).join('')
       : '<p class="muted">Chưa có khoá học nào.</p>';
     $$('[data-mx]', el).forEach((i) => { i.onchange = () => busy(null, async () => {
       await q(db.from('course_nodes').update({ max_absent: i.value === '' ? null : Number(i.value) }).eq('id', i.dataset.mx)); toast('Đã lưu số buổi được vắng', 'ok'); }); });
