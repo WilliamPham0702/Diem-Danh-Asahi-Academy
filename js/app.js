@@ -153,7 +153,7 @@
   const TABS = {
     student: [['home', 'Trang chủ'], ['scan', 'Điểm danh'], ['history', 'Lịch sử'], ['account', 'Tài khoản']],
     teacher: [['schedule', 'Lịch dạy'], ['classes', 'Lớp học'], ['roster', 'Học viên'], ['reports', 'Báo cáo'], ['account', 'Tài khoản']],
-    admin: [['schedule', 'Lịch dạy'], ['classes', 'Lớp học'], ['roster', 'Học viên'], ['reports', 'Báo cáo'], ['types', 'Loại lớp'],
+    admin: [['schedule', 'Lịch dạy'], ['classes', 'Lớp học'], ['roster', 'Học viên'], ['reports', 'Báo cáo'], ['types', 'Khoá học'],
       ['staff', 'Nhân sự'], ['account', 'Tài khoản']],
   };
   // Học viên được nâng lên trợ giảng: có thêm tab Lịch dạy
@@ -282,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-42';
+  const APP_VERSION = '2026.11.28-43';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -632,7 +632,7 @@
       const c = rows.find((x) => x.id === b.dataset.reg);
       modal(`<h3 style="text-align:center">Đăng ký lớp</h3>
         <div class="card" style="margin:8px 0"><b>${esc(c.name)}</b>
-          <div class="small" style="margin-top:6px">Loại lớp: ${esc(c.type_name)}<br>Thời gian học: ${esc(fmtRange(c))}<br>Địa điểm: ${esc(c.location || '(chưa cập nhật)')}<br>Giảng viên: ${esc((c.teachers || []).join(', ') || '(chưa phân công)')}</div></div>
+          <div class="small" style="margin-top:6px">Khoá học: ${esc(c.type_name)}<br>Thời gian học: ${esc(fmtRange(c))}<br>Địa điểm: ${esc(c.location || '(chưa cập nhật)')}<br>Giảng viên: ${esc((c.teachers || []).join(', ') || '(chưa phân công)')}</div></div>
         <p class="muted small">Mỗi buổi học chỉ được tham gia 1 lớp. Nếu trùng ngày và ca với lớp bạn đang học, hệ thống sẽ báo.</p>
         <div class="row" style="justify-content:center;margin-top:10px"><button class="btn pink" id="okreg">Xác nhận đăng ký</button>
           <button class="btn ghost" id="noreg">Hủy</button></div>`, (m, close) => {
@@ -847,7 +847,7 @@
       .select('id, name, start_date, graduation_date, class_types(name), class_students(count), class_sessions(count)')
       .order('created_at', { ascending: false }));
     $('#t').outerHTML = rows.length ? `<div class="tbl-wrap"><table>
-      <tr><th>Tên lớp</th><th>Loại lớp</th><th>Ngày bắt đầu</th><th>Ngày tốt nghiệp</th><th>Học viên</th><th>Số buổi</th><th></th></tr>
+      <tr><th>Tên lớp</th><th>Khoá học</th><th>Ngày bắt đầu</th><th>Ngày tốt nghiệp</th><th>Học viên</th><th>Số buổi</th><th></th></tr>
       ${rows.map((c) => `<tr class="rowlink" data-open="${c.id}"><td><a href="#/class/${c.id}"><b>${esc(c.name)}</b></a></td><td>${esc(c.class_types?.name || '')}</td>
         <td>${esc(fmtDate(c.start_date))}</td><td>${esc(fmtDate(c.graduation_date))}</td><td>${c.class_students?.[0]?.count ?? 0}</td>
         <td>${c.class_sessions?.[0]?.count ?? 0}</td>
@@ -856,19 +856,80 @@
     $$('[data-open]', el).forEach((tr) => { tr.onclick = (e) => { if (!e.target.closest('a')) nav('class/' + tr.dataset.open); }; });
   }
 
+  // ---- Khoá học > Module (cấp 2) > Nhóm (cấp 3)
+  const loadNodes = () => q(db.from('course_nodes').select('id, class_type_id, parent_id, code, sort_no, max_absent').order('sort_no'));
+  function nodeCode(courseName, n, all) {
+    const p = n.parent_id ? all.find((x) => x.id === n.parent_id) : null;
+    return [courseName, p && p.code, n.code].filter(Boolean).join('-');
+  }
+  // Hai ô chọn nối tiếp: cấp 2 (module) -> cấp 3 (nhóm, nếu có). Kết quả: null = học tất cả module
+  function renderNodePicker(m, courseNodes) {
+    const box = $('#npbox', m); if (!box) return;
+    const l2 = courseNodes.filter((n) => !n.parent_id);
+    if (!l2.length) { box.innerHTML = ''; return; }
+    box.innerHTML = `<div class="grid2"><div><label>Cấp 2: module</label><select id="np2"><option value="">Tất cả module</option>
+      ${l2.map((n) => `<option value="${n.id}">${esc(n.code)}</option>`).join('')}</select></div>
+      <div id="np3w" style="display:none"><label>Cấp 3: nhóm</label><select id="np3"></select></div></div>`;
+    $('#np2', m).onchange = () => {
+      const kids = courseNodes.filter((n) => n.parent_id === $('#np2', m).value);
+      $('#np3w', m).style.display = kids.length ? '' : 'none';
+      $('#np3', m).innerHTML = '<option value="">Tất cả nhóm</option>' + kids.map((n) => `<option value="${n.id}">${esc(n.code)}</option>`).join('');
+    };
+  }
+  function nodePickerValue(m) {
+    const a = $('#np2', m); if (!a || !a.value) return null;
+    const b = $('#np3', m);
+    return [b && b.value ? b.value : a.value];
+  }
+  // Mô tả module của 1 học viên: danh sách mã ngắn (M1, M2-TT) hoặc "Tất cả module"
+  function nodeTags(nodeIds, courseNodes) {
+    if (!courseNodes.length) return '';
+    if (!nodeIds || !nodeIds.length) return '<span class="badge gray">Tất cả module</span>';
+    return nodeIds.map((id) => {
+      const n = courseNodes.find((x) => x.id === id); if (!n) return '';
+      const par = n.parent_id ? courseNodes.find((x) => x.id === n.parent_id) : null;
+      return `<span class="badge">${esc((par ? par.code + '-' : '') + n.code)}</span>`;
+    }).join(' ');
+  }
+  function editStudentNodes(classId, code, name, nodeIds, courseNodes, done) {
+    const l2 = courseNodes.filter((n) => !n.parent_id);
+    const has = (id) => nodeIds && nodeIds.includes(id);
+    modal(`<h3>Module của học viên</h3><p><b>${esc(name)}</b> <span class="small muted">${esc(code)}</span></p>
+      <label class="pk"><input type="checkbox" id="nall"${!nodeIds || !nodeIds.length ? ' checked' : ''}><span><b>Học tất cả module</b></span></label>
+      <div class="pick" style="max-height:280px">${l2.map((n) => {
+        const kids = courseNodes.filter((k) => k.parent_id === n.id);
+        return `<label class="pk"><input type="checkbox" data-n="${n.id}"${has(n.id) ? ' checked' : ''}><span><b>${esc(n.code)}</b></span></label>`
+          + kids.map((k) => `<label class="pk" style="padding-left:32px"><input type="checkbox" data-n="${k.id}" data-p="${n.id}"${has(k.id) ? ' checked' : ''}><span>${esc(n.code + '-' + k.code)}</span></label>`).join('');
+      }).join('')}</div>
+      <div class="row" style="margin-top:12px"><button class="btn pink" id="nok">Lưu</button><button class="btn ghost" id="ncx" type="button">Hủy</button></div>`, (m, close) => {
+      $('#ncx', m).onclick = close;
+      $$('[data-n]', m).forEach((c) => { c.onchange = () => { if (c.checked) $('#nall', m).checked = false; }; });
+      $('#nall', m).onchange = () => { if ($('#nall', m).checked) $$('[data-n]', m).forEach((c) => { c.checked = false; }); };
+      $('#nok', m).onclick = () => busy($('#nok', m), async () => {
+        let ids = $('#nall', m).checked ? null : $$('[data-n]', m).filter((c) => c.checked).map((c) => c.dataset.n);
+        if (ids) ids = ids.filter((id) => { const n = courseNodes.find((x) => x.id === id); return !(n && n.parent_id && ids.includes(n.parent_id)); });
+        if (ids && !ids.length) throw new Error('Chọn ít nhất 1 module, hoặc chọn "Học tất cả module"');
+        await q(db.rpc('set_student_nodes', { p_class: classId, p_code: code, p_nodes: ids }));
+        close(); toast('Đã cập nhật module', 'ok'); done();
+      });
+    });
+  }
+
   async function openCreateClass() {
     const types = await q(db.from('class_types').select('id, name, class_type_sessions(count)').order('name'));
     const sessList = await q(db.from('class_type_sessions').select('class_type_id, day_no'));
-    if (!types.length) { toast('Chưa có loại lớp nào. Admin cần tạo loại lớp trước.', 'err'); return; }
+    if (!types.length) { toast('Chưa có khoá học nào. Admin cần tạo khoá học trước.', 'err'); return; }
+    const allNodes = await loadNodes();
     const today = new Date().toISOString().slice(0, 10);
     modal(`<h2>Tạo lớp</h2>
       <form id="cf">
         <label>Tên lớp</label><input id="cn" required placeholder="VD: LPFC-HCM-20261201" style="text-transform:uppercase" autocapitalize="characters">
         <div class="grid2">
-          <div><label>Loại lớp</label><select id="ct">${types.map((t) =>
+          <div><label>Khoá học</label><select id="ct">${types.map((t) =>
             `<option value="${t.id}">${esc(t.name)} (${t.class_type_sessions?.[0]?.count ?? 0} buổi)</option>`).join('')}</select></div>
           <div><label>Ngày học đầu tiên</label><input id="cd" type="date" value="${today}" required></div>
         </div>
+        <div id="npbox"></div>
         <label>Ngày tốt nghiệp <span class="muted small">(tự tính, có thể chọn ngày khác)</span></label><input id="cg" type="date" required>
         <label>Địa điểm học</label><input id="cl" placeholder="VD: Phòng 301, Asahi Life - 123 Nguyễn Huệ, Q.1">
         <label style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="ce" style="width:auto"> Mở đăng ký cho học viên tự đăng ký lớp này</label>
@@ -881,7 +942,7 @@
       </form>`, (m, close) => {
       $('#tpl', m).onclick = (e) => { e.preventDefault(); downloadTemplate(); };
       $('#cancel', m).onclick = close;
-      // Ngày tốt nghiệp mặc định = ngày học cuối của loại lớp (bỏ T7, CN), giảng viên có thể sửa
+      // Ngày tốt nghiệp mặc định = ngày học cuối của khoá học (bỏ T7, CN), giảng viên có thể sửa
       let gradTouched = false;
       const iso = (d) => d.toISOString().slice(0, 10);
       function autoGrad() {
@@ -896,7 +957,8 @@
         $('#cg', m).value = iso(d);
       }
       $('#cg', m).onchange = () => { gradTouched = true; };
-      $('#cd', m).onchange = autoGrad; $('#ct', m).onchange = autoGrad; autoGrad();
+      const drawNP = () => renderNodePicker(m, allNodes.filter((n) => n.class_type_id === $('#ct', m).value));
+      $('#cd', m).onchange = autoGrad; $('#ct', m).onchange = () => { autoGrad(); drawNP(); }; autoGrad(); drawNP();
       $('#cf', m).onsubmit = (e) => {
         e.preventDefault();
         busy($('#ok', m), async () => {
@@ -907,7 +969,7 @@
           if (!codes.length && !confirm('Chưa có học viên nào (chưa chọn file Excel). Vẫn tạo lớp? Sau đó có thể thêm học viên trong lớp.')) return;
           const id = await q(db.rpc('create_class', {
             p_name: $('#cn', m).value.trim().toUpperCase(), p_type: $('#ct', m).value, p_start: $('#cd', m).value,
-            p_codes: codes, p_grad: $('#cg', m).value || null,
+            p_codes: codes, p_grad: $('#cg', m).value || null, p_nodes: nodePickerValue(m),
           }));
           await q(db.from('classes').update({ location: $('#cl', m).value.trim() || null, open_enrollment: $('#ce', m).checked }).eq('id', id));
           const miss = codes.length ? await missingCodes(codes) : [];
@@ -924,7 +986,9 @@
   async function viewClass(el, id) {
     const cls = await q(db.from('classes').select('*, class_types(name, max_absent)').eq('id', id).single());
     const sessions = await q(db.from('class_sessions').select('*').eq('class_id', id).order('session_no'));
-    const roster = await q(db.from('class_students').select('student_code, students(*)').eq('class_id', id));
+    const roster = await q(db.from('class_students').select('student_code, node_ids, students(*)').eq('class_id', id));
+    const cnodes = cls.class_type_id ? (await loadNodes()).filter((n) => n.class_type_id === cls.class_type_id) : [];
+    const nodeOfSession = (sx) => { const n = cnodes.find((x) => x.id === sx.node_id); return n ? nodeCode(cls.class_types?.name, n, cnodes) : ''; };
     const att = sessions.length ? await fetchAll(() => db.from('attendance')
       .select('id, session_id, student_code, checked_at, source, late').in('session_id', sessions.map((s) => s.id)).order('id')) : [];
     const profs = roster.length ? await fetchAll(() => db.from('profiles').select('student_code, device_id')
@@ -989,7 +1053,7 @@
           <div class="s-main"><b>Buổi ${s.session_no}${s.shift ? ' · ' + SHIFT_LABEL[s.shift] : ''}</b>
             ${s.closed ? '<span class="badge gray">Đã đóng</span>' : s.opened_at ? '<span class="badge ok">Đã mở</span>' : '<span class="badge warn">Chưa mở</span>'}
             ${!s.teacher_email && !s.ta_email ? '<span class="badge bad" title="Buổi cần có giảng viên hoặc trợ giảng">Chưa phân công</span>' : ''}
-            <div class="small muted s-ct">${esc(s.content || '')}</div></div>
+            <div class="small muted s-ct">${nodeOfSession(s) ? `<span class="badge">${esc(nodeOfSession(s))}</span> ` : ''}${esc(s.content || '')}</div></div>
           <div><input type="date" value="${s.session_date || ''}" data-date="${s.id}"></div>
           <div><select data-teacher="${s.id}"><option value="">(Chưa gán)</option>${teachers.map((t) => `<option value="${esc(t.email)}"${t.email === String(s.teacher_email || '').toLowerCase() ? ' selected' : ''}>${esc(t.full_name || t.email)}${t.has_account ? '' : ' (chưa tạo TK)'}</option>`).join('')}</select></div>
           <div><select data-ta="${s.id}"${classTA && !ended ? '' : ' disabled'}><option value="">${classTA ? '(Không có trợ giảng)' : '(Lớp chưa có trợ giảng)'}</option>
@@ -1003,7 +1067,8 @@
           <div class="trow thead"><div>Học viên</div><div>Có mặt / Vắng</div><div>Từng buổi ${ended ? '' : '(bấm vào ô để điểm danh tay / hủy)'}</div><div></div></div>
           ${roster.map((r) => { const s = r.students || {}; return `<div class="trow">
             <div class="t-main"><b>${esc(s.full_name || r.student_code)}</b>
-              <div class="small muted">${esc(r.student_code)}${s.title ? ' · ' + esc(s.title) : ''}</div></div>
+              <div class="small muted">${esc(r.student_code)}${s.title ? ' · ' + esc(s.title) : ''}</div>
+              ${cnodes.length ? `<div class="pi-st">${nodeTags(r.node_ids, cnodes)} ${ended ? '' : `<a href="#" data-nodes="${esc(r.student_code)}" class="small">Đổi module</a>`}</div>` : ''}</div>
             <div class="small">Có mặt <b>${perStudent[r.student_code] || 0}/${sessions.length}</b><br>Vắng ${absent[r.student_code] > 0 ? `<span class="badge ${maxAbsent != null && absent[r.student_code] > maxAbsent ? 'bad' : 'gray'}">${absent[r.student_code]}</span>` : '<b>0</b>'}</div>
             <div>${sessGrid(sessions, attMap, r.student_code, !ended)}</div>
             <div class="t-act">${hasDevice.has(r.student_code) ? `<button class="btn sm ghost" data-reset="${esc(r.student_code)}">Đặt lại thiết bị</button>` : ''}
@@ -1011,6 +1076,9 @@
               <button class="btn sm danger" data-rm="${esc(r.student_code)}">Xóa</button></div></div>`; }).join('')}
         </div></div>`;
 
+    $$('[data-nodes]', el).forEach((a) => { a.onclick = (e) => {
+      e.preventDefault(); const r = roster.find((x) => x.student_code === a.dataset.nodes);
+      editStudentNodes(id, r.student_code, (r.students && r.students.full_name) || r.student_code, r.node_ids, cnodes, render); }; });
     // Bấm vào ô của 1 buổi: đã điểm danh -> Hủy điểm danh; chưa -> Điểm danh tay (chỉ áp dụng cho buổi đó)
     $$('[data-cell]', el).forEach((b) => { b.onclick = () => {
       const sess = sessions.find((x) => x.id === b.dataset.cell); const code = b.dataset.code;
@@ -1107,6 +1175,7 @@
         <input id="as" placeholder="Gõ mã hoặc tên rồi chọn..." autocomplete="off">
         <div class="chips" id="achips"></div>
         <div class="pick" id="alist"><div class="small muted" style="padding:10px">Đang tải danh sách...</div></div>
+        <div id="npbox"></div>
         <details class="more"><summary>Hoặc thêm bằng file Excel / dán danh sách mã</summary>
           <label>File Excel danh sách</label><input id="ax" type="file" accept=".xlsx,.xls,.csv">
           <div class="small muted"><a href="#" id="tpl">Tải file mẫu</a></div>
@@ -1131,6 +1200,8 @@
           : '<div class="small muted" style="padding:10px">Không tìm thấy học viên nào.</div>';
         $$('[data-c]', m).forEach((cb) => { cb.onchange = () => { if (cb.checked) sel.add(cb.dataset.c); else sel.delete(cb.dataset.c); drawChips(); }; });
       };
+      q(db.from('classes').select('class_type_id').eq('id', classId).single()).then(async (c) => {
+        const ns = (await loadNodes()).filter((n) => n.class_type_id === c.class_type_id); renderNodePicker(m, ns); }).catch(() => {});
       Promise.all([
         fetchAll(() => db.from('students').select('code, full_name, title').order('full_name').order('code')),
         q(db.from('class_students').select('student_code').eq('class_id', classId)),
@@ -1144,12 +1215,13 @@
         busy($('#ok', m), async () => {
           const existing = new Set((await q(db.from('class_students').select('student_code').eq('class_id', classId))).map((x) => x.student_code));
           let codes = parseCodes($('#ac', m).value).concat(Array.from(sel));
+          const nodesVal = nodePickerValue(m);
           let dup = 0;
           const f = $('#ax', m).files[0];
           if (f) {
             const { rows } = await readStudentsFile(f); // file lỗi thì báo lỗi, không thêm gì
-            const fresh = rows.filter((r) => !existing.has(r.code));
-            dup += rows.length - fresh.length; // đã có trong lớp: không nhập lại
+            const fresh = nodesVal ? rows : rows.filter((r) => !existing.has(r.code));
+            dup += rows.length - fresh.length; // đã có trong lớp: không nhập lại (trừ khi đang gán module)
             for (let i = 0; i < fresh.length; i += 400) {
               const { error } = await db.from('students').upsert(fresh.slice(i, i + 400), { onConflict: 'code' });
               if (error) throw error;
@@ -1157,21 +1229,15 @@
             codes = codes.concat(fresh.map((r) => r.code));
           }
           codes = Array.from(new Set(codes));
-          const already = codes.filter((c) => existing.has(c)); dup += already.length;
-          codes = codes.filter((c) => !existing.has(c));
+          if (!nodesVal) { const already = codes.filter((c) => existing.has(c)); dup += already.length; codes = codes.filter((c) => !existing.has(c)); }
           if (!codes.length) {
             if (dup) { close(); toast(`Tất cả ${dup} học viên đã có trong lớp, không thêm lại`, 'ok'); return; }
             throw new Error('Chưa chọn học viên nào');
           }
-          const miss = await missingCodes(codes);
-          const ok = codes.filter((c) => !miss.includes(c));
-          if (ok.length) {
-            const { error } = await db.from('class_students').upsert(
-              ok.map((c) => ({ class_id: classId, student_code: c })), { onConflict: 'class_id,student_code', ignoreDuplicates: true });
-            if (error) throw error;
-          }
+          const res = await q(db.rpc('add_class_students', { p_class: classId, p_codes: codes, p_nodes: nodesVal }));
+          const miss = res.missing || [];
           close();
-          toast(`Đã thêm ${ok.length} học viên${dup ? `, bỏ qua ${dup} học viên đã có trong lớp` : ''}`, 'ok');
+          toast(`Đã thêm ${res.added} học viên${res.updated ? `, cập nhật module cho ${res.updated} người` : ''}${dup ? `, bỏ qua ${dup} học viên đã có trong lớp` : ''}`, 'ok');
           if (miss.length) toast(`Không tìm thấy mã: ${miss.slice(0, 8).join(', ')}`, 'err');
           render();
         });
@@ -1721,7 +1787,7 @@
         { name: 'Học viên - Lớp', title: 'Danh sách học viên theo lớp', info: infoRows,
           rows: rows.map((r) => ({ ...r, first: fmt(r.first), last: fmt(r.last) })),
           cols: [{ header: 'STT', key: '#', width: 6, align: 'center' }, { header: 'Mã HV', key: 'code', width: 13, align: 'center' }, { header: 'Họ và tên', key: 'name', width: 28 },
-            { header: 'Chức danh', key: 'title', width: 18 }, { header: 'Mã lớp', key: 'cls', width: 26 }, { header: 'Loại lớp', key: 'type', width: 16 },
+            { header: 'Chức danh', key: 'title', width: 18 }, { header: 'Mã lớp', key: 'cls', width: 26 }, { header: 'Khoá học', key: 'type', width: 16 },
             { header: 'Giảng viên', key: 'tch', width: 24 }, { header: 'Từ ngày', key: 'first', width: 12, align: 'center' }, { header: 'Đến ngày', key: 'last', width: 12, align: 'center' },
             { header: 'Trạng thái', key: 'status', width: 13, align: 'center' }, { header: 'Có mặt', key: 'present', width: 9, align: 'center' }, { header: 'Vắng', key: 'absent', width: 8, align: 'center' }] },
         { name: 'Tổng hợp học viên', title: 'Tổng hợp theo học viên', info: infoRows, rows: sum,
@@ -1816,7 +1882,7 @@
           const sKey = status.startsWith('Có mặt') ? 'Đúng giờ' : status;
           if (summary[key][sKey] !== undefined) summary[key][sKey]++;
           detail.push({
-            'Lớp': c.name, 'Loại lớp': c.class_types?.name || '', 'Buổi': s.session_no, 'Nội dung': s.content || '',
+            'Lớp': c.name, 'Khoá học': c.class_types?.name || '', 'Buổi': s.session_no, 'Nội dung': s.content || '',
             'Ngày học': fmtDate(s.session_date), 'Ca': s.shift ? SHIFT_LABEL[s.shift] : '', 'Mã HV': st.code, 'Họ tên': st.full_name,
             'Chức danh': st.title || '', 'Trạng thái': status,
             'Giờ điểm danh': a ? fmtTime(a.checked_at) : '', 'Hình thức': a ? (a.source === 'manual' ? 'Giảng viên điểm danh' : 'QR') : '',
@@ -1845,7 +1911,7 @@
           { header: 'Vắng', key: 'Vắng', width: 9, align: 'center' }, { header: 'Chưa mở', key: 'Chưa mở', width: 10, align: 'center' },
           { header: 'Tỷ lệ có mặt', key: 'Tỷ lệ có mặt', width: 12, align: 'center' }, { header: 'Cảnh báo', key: 'Cảnh báo vắng', width: 20 }] },
       { name: 'Chi tiết', title: 'Chi tiết điểm danh từng buổi', info, rows: detail,
-        cols: [{ header: 'STT', key: '#', width: 6, align: 'center' }, { header: 'Lớp', key: 'Lớp', width: 24 }, { header: 'Loại lớp', key: 'Loại lớp', width: 16 },
+        cols: [{ header: 'STT', key: '#', width: 6, align: 'center' }, { header: 'Lớp', key: 'Lớp', width: 24 }, { header: 'Khoá học', key: 'Khoá học', width: 16 },
           { header: 'Buổi', key: 'Buổi', width: 7, align: 'center' }, { header: 'Nội dung', key: 'Nội dung', width: 28 }, { header: 'Ngày học', key: 'Ngày học', width: 12, align: 'center' },
           { header: 'Ca', key: 'Ca', width: 9, align: 'center' }, { header: 'Mã HV', key: 'Mã HV', width: 13, align: 'center' }, { header: 'Họ và tên', key: 'Họ tên', width: 26 },
           { header: 'Chức danh', key: 'Chức danh', width: 18 }, { header: 'Trạng thái', key: 'Trạng thái', width: 20, color: STATUS_COLOR },
@@ -1854,35 +1920,59 @@
     toast('Đã xuất file Excel', 'ok');
   }
 
-  // ================================================================ ADMIN: loại lớp
+  // ================================================================ ADMIN: khoá học
   async function viewTypes(el) {
-    el.innerHTML = '<div class="card" id="newbox"></div><div class="card"><h2>Loại lớp</h2><p class="muted small">Mỗi loại lớp quy định số buổi và nội dung từng buổi. Khi giảng viên tạo lớp, các buổi được sinh ra theo mẫu này.</p><div id="t">Đang tải...</div></div>';
-    const types = await q(db.from('class_types').select('id, name, description, max_absent, class_type_sessions(session_no, content, day_no, shift)').order('name'));
-    $('#t').innerHTML = types.length ? types.map((t) => `<div style="border-top:1px solid var(--line);padding:10px 0">
-      <div class="row between"><b>${esc(t.name)}</b> <span><span class="badge">${t.class_type_sessions.length} buổi</span>
-        <button class="btn sm danger" data-del="${t.id}">Xóa</button></span></div>
-      ${t.max_absent != null ? `<div class="small" style="color:var(--bad)">Cảnh báo khi vắng quá ${t.max_absent} buổi</div>` : ''}
-      <div class="muted small">${esc(t.description || '')}</div>
-      <ol class="small" style="margin:6px 0 0 18px">${t.class_type_sessions.sort((a, b) => a.session_no - b.session_no).map((s) => `<li>${s.day_no ? `<b>Ngày ${s.day_no}${s.shift ? ' · ' + SHIFT_LABEL[s.shift] : ''}:</b> ` : ''}${esc(s.content)}</li>`).join('')}</ol></div>`).join('')
-      : '<p class="muted">Chưa có loại lớp nào.</p>';
+    el.innerHTML = '<div class="card" id="newbox"></div><div class="card"><h2>Khoá học</h2><p class="muted small">Mỗi khoá học có các module (cấp 2, ví dụ M1, M2) và nhóm (cấp 3, nếu có). Mỗi buổi thuộc đúng một module hoặc nhóm. Mỗi module có số buổi được vắng riêng.</p><div id="t">Đang tải...</div></div>';
+    const types = await q(db.from('class_types').select('id, name, description, class_type_sessions(session_no, content, day_no, shift, node_id)').order('name'));
+    const nodes = await loadNodes();
+    $('#t').innerHTML = types.length ? types.map((t) => {
+      const tn = nodes.filter((n) => n.class_type_id === t.id);
+      const l2 = tn.filter((n) => !n.parent_id);
+      const ss = t.class_type_sessions.sort((a, b) => a.session_no - b.session_no);
+      const line = (x) => `<li>${x.day_no ? `<b>Ngày ${x.day_no}${x.shift ? ' · ' + SHIFT_LABEL[x.shift] : ''}:</b> ` : ''}${esc(x.content)}</li>`;
+      const grp = (n) => { const kids = tn.filter((k) => k.parent_id === n.id); const own = ss.filter((x) => x.node_id === n.id);
+        return `<div style="margin-top:8px"><div class="row between"><b>${esc(t.name + '-' + n.code)}</b>
+          <span class="small">Được vắng <input type="number" min="0" value="${n.max_absent ?? ''}" data-mx="${n.id}" style="width:64px;min-height:30px;padding:2px 6px;display:inline-block"> buổi</span></div>
+          ${own.length ? `<ol class="small" style="margin:4px 0 0 18px" start="${own[0].session_no}">${own.map(line).join('')}</ol>` : ''}
+          ${kids.map((k) => `<div class="small" style="margin:4px 0 0 14px"><b>${esc(t.name + '-' + n.code + '-' + k.code)}</b>: ${ss.filter((x) => x.node_id === k.id).map((x) => 'buổi ' + x.session_no + ' ' + esc(x.content)).join('; ')}</div>`).join('')}</div>`; };
+      const orphan = ss.filter((x) => !x.node_id);
+      return `<div style="border-top:1px solid var(--line);padding:10px 0">
+        <div class="row between"><b>${esc(t.name)}</b> <span><span class="badge">${ss.length} buổi</span> <button class="btn sm danger" data-del="${t.id}">Xóa</button></span></div>
+        <div class="muted small">${esc(t.description || '')}</div>
+        ${l2.map(grp).join('')}
+        ${orphan.length ? `<ol class="small" style="margin:6px 0 0 18px">${orphan.map(line).join('')}</ol>` : ''}</div>`; }).join('')
+      : '<p class="muted">Chưa có khoá học nào.</p>';
+    $$('[data-mx]', el).forEach((i) => { i.onchange = () => busy(null, async () => {
+      await q(db.from('course_nodes').update({ max_absent: i.value === '' ? null : Number(i.value) }).eq('id', i.dataset.mx)); toast('Đã lưu số buổi được vắng', 'ok'); }); });
     $$('[data-del]', el).forEach((b) => { b.onclick = () => {
-      if (!confirm('Xóa loại lớp này? Các lớp đã tạo vẫn giữ nguyên.')) return;
+      if (!confirm('Xóa khoá học này? Các lớp đã tạo vẫn giữ nguyên.')) return;
       busy(b, async () => { await q(db.from('class_types').delete().eq('id', b.dataset.del)); render(); }); }; });
-    $('#newbox').innerHTML = `<h3>Tạo loại lớp mới</h3><form id="tf">
-      <label>Tên loại lớp</label><input id="tn" required placeholder="VD: LPFC">
+    $('#newbox').innerHTML = `<h3>Tạo khoá học mới</h3><form id="tf">
+      <label>Mã khoá học (cấp 1)</label><input id="tn" required placeholder="VD: LPFC-F">
       <label>Mô tả</label><input id="td">
-      <label>Cảnh báo khi học viên vắng quá (số buổi, để trống nếu không cần)</label><input id="tm" type="number" min="0">
-      <label>Nội dung các buổi (mỗi dòng là 1 buổi)</label>
-      <textarea id="ts" required placeholder="Module 1 - Nền tảng&#10;Module 2 - Kỹ năng tư vấn"></textarea>
-      <div style="margin-top:12px"><button class="btn pink">Lưu loại lớp</button></div></form>`;
+      <label>Số buổi được vắng mỗi module <span class="muted small">(mặc định)</span></label><input id="tm" type="number" min="0" value="1">
+      <label>Các buổi học, mỗi dòng 1 buổi: <b>mã | nội dung</b></label>
+      <textarea id="ts" required style="min-height:120px" placeholder="M1 | Tổng quan Asahi Life&#10;M1 | Pháp luật bảo hiểm&#10;M2-TT | Compliance&#10;M2-UL | Sản phẩm UL"></textarea>
+      <div class="small muted">Mã gồm cấp 2 và cấp 3 (nếu có), nối bằng dấu gạch: <code>M1</code> hoặc <code>M2-TT</code>. Dòng không có mã được xếp vào <code>M1</code>.</div>
+      <div style="margin-top:10px"><button class="btn pink">Lưu khoá học</button></div></form>`;
     $('#tf').onsubmit = (e) => {
       e.preventDefault();
       busy($('#tf button'), async () => {
-        const lines = $('#ts').value.split('\n').map((s) => s.trim()).filter(Boolean);
-        if (!lines.length) throw new Error('Cần ít nhất 1 buổi');
-        const t = await q(db.from('class_types').insert({ name: $('#tn').value.trim(), description: $('#td').value.trim() || null, max_absent: $('#tm').value === '' ? null : Number($('#tm').value) }).select().single());
-        await q(db.from('class_type_sessions').insert(lines.map((c, i) => ({ class_type_id: t.id, session_no: i + 1, content: c }))));
-        toast('Đã lưu loại lớp', 'ok'); render();
+        const rows = $('#ts').value.split('\n').map((x) => x.trim()).filter(Boolean).map((ln) => {
+          const i = ln.indexOf('|'); const code = i < 0 ? 'M1' : ln.slice(0, i).trim() || 'M1'; const content = (i < 0 ? ln : ln.slice(i + 1)).trim();
+          const parts = code.split('-').map((x) => x.trim()).filter(Boolean);
+          return { l2: parts[0], l3: parts.slice(1).join('-') || null, content };
+        });
+        if (!rows.length) throw new Error('Cần ít nhất 1 buổi');
+        const mx = $('#tm').value === '' ? null : Number($('#tm').value);
+        const t = await q(db.from('class_types').insert({ name: $('#tn').value.trim().toUpperCase(), description: $('#td').value.trim() || null }).select().single());
+        const l2codes = Array.from(new Set(rows.map((r) => r.l2)));
+        const l2 = await q(db.from('course_nodes').insert(l2codes.map((c, i) => ({ class_type_id: t.id, code: c, sort_no: i + 1, max_absent: mx }))).select());
+        const l3keys = []; rows.forEach((r) => { if (r.l3 && !l3keys.some((k) => k.l2 === r.l2 && k.l3 === r.l3)) l3keys.push({ l2: r.l2, l3: r.l3 }); });
+        const l3 = l3keys.length ? await q(db.from('course_nodes').insert(l3keys.map((k, i) => ({ class_type_id: t.id, parent_id: l2.find((n) => n.code === k.l2).id, code: k.l3, sort_no: i + 1, max_absent: null }))).select()) : [];
+        await q(db.from('class_type_sessions').insert(rows.map((r, i) => ({ class_type_id: t.id, session_no: i + 1, content: r.content,
+          node_id: r.l3 ? l3.find((n) => n.code === r.l3 && n.parent_id === l2.find((x) => x.code === r.l2).id).id : l2.find((n) => n.code === r.l2).id }))));
+        toast('Đã lưu khoá học', 'ok'); render();
       });
     };
   }

@@ -974,3 +974,135 @@ begin
 end $$;
 -- v42: thu hoi quyen goi RPC cua ham trigger
 revoke execute on function public.guard_session_update(), public.handle_new_user() from public, anon, authenticated;
+
+-- ===== v43: Khoa hoc nhieu cap (khoa > module > nhom), gan hoc vien theo module =====
+create table if not exists public.course_nodes (
+  id uuid primary key default gen_random_uuid(),
+  class_type_id uuid not null references public.class_types (id) on delete cascade,
+  parent_id uuid references public.course_nodes (id) on delete cascade,
+  code text not null,
+  sort_no int not null default 0,
+  max_absent int default 1
+);
+create unique index if not exists course_nodes_uq on public.course_nodes
+  (class_type_id, coalesce(parent_id, '00000000-0000-0000-0000-000000000000'::uuid), upper(code));
+alter table public.course_nodes enable row level security;
+drop policy if exists cn_select on public.course_nodes;
+create policy cn_select on public.course_nodes for select to authenticated using (true);
+drop policy if exists cn_admin on public.course_nodes;
+create policy cn_admin on public.course_nodes for all to authenticated using (public.is_admin()) with check (public.is_admin());
+grant select, insert, update, delete on public.course_nodes to authenticated;
+
+alter table public.class_type_sessions add column if not exists node_id uuid references public.course_nodes (id) on delete set null;
+alter table public.class_sessions add column if not exists node_id uuid references public.course_nodes (id) on delete set null;
+alter table public.class_students add column if not exists node_ids uuid[];  -- null = hoc tat ca module
+
+-- Du lieu hien co: LPFC-F (M1 = buoi 1-8, M2 = buoi 9-20, 12 nhom) va LPFC-P (M1 = 1-8, M2 = 9-14)
+do $$
+declare t uuid; m1 uuid; m2 uuid; n uuid; i int;
+  codes text[] := array['TT','CS','CT','VH','SC1','SC2','SC3','UL','SC4','SC5','EPOS','Active'];
+begin
+  select id into t from public.class_types where name in ('LPFC-FullTime', 'LPFC-F') limit 1;
+  if t is not null and not exists (select 1 from public.course_nodes where class_type_id = t) then
+    update public.class_types set name = 'LPFC-F' where id = t;
+    insert into public.course_nodes (class_type_id, code, sort_no) values (t, 'M1', 1) returning id into m1;
+    insert into public.course_nodes (class_type_id, code, sort_no) values (t, 'M2', 2) returning id into m2;
+    update public.class_type_sessions set node_id = m1 where class_type_id = t and session_no <= 8;
+    for i in 1..12 loop
+      insert into public.course_nodes (class_type_id, parent_id, code, sort_no, max_absent) values (t, m2, codes[i], i, null) returning id into n;
+      update public.class_type_sessions set node_id = n where class_type_id = t and session_no = 8 + i;
+    end loop;
+  end if;
+  select id into t from public.class_types where name in ('LPFC-Parttime', 'LPFC-P') limit 1;
+  if t is not null and not exists (select 1 from public.course_nodes where class_type_id = t) then
+    update public.class_types set name = 'LPFC-P' where id = t;
+    insert into public.course_nodes (class_type_id, code, sort_no) values (t, 'M1', 1) returning id into m1;
+    insert into public.course_nodes (class_type_id, code, sort_no) values (t, 'M2', 2) returning id into m2;
+    update public.class_type_sessions set node_id = m1 where class_type_id = t and session_no <= 8;
+    update public.class_type_sessions set node_id = m2 where class_type_id = t and session_no > 8;
+  end if;
+  update public.class_sessions cs set node_id = cts.node_id
+    from public.classes c, public.class_type_sessions cts
+   where cs.class_id = c.id and cts.class_type_id = c.class_type_id and cts.session_no = cs.session_no and cs.node_id is null;
+end $$;
+
+-- Kiem tra danh sach node thuoc dung khoa cua lop
+create or replace function public.nodes_ok(p_class uuid, p_nodes uuid[]) returns boolean
+language sql stable security definer set search_path = public as $$
+  select p_nodes is null or not exists (
+    select 1 from unnest(p_nodes) x
+     where not exists (select 1 from public.course_nodes n join public.classes c on c.class_type_id = n.class_type_id
+                        where n.id = x and c.id = p_class));
+$$;
+
+-- Them hoc vien vao lop kem module (p_nodes null/rong = hoc tat ca module). Gop module neu da co trong lop.
+create or replace function public.add_class_students(p_class uuid, p_codes text[], p_nodes uuid[] default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_nodes uuid[] := case when p_nodes is null or cardinality(p_nodes) = 0 then null else p_nodes end;
+  v_codes text[]; v_added int := 0; v_upd int := 0; v_missing text[]; c text; ex record;
+begin
+  if not public.can_manage_class(p_class) then raise exception 'FORBIDDEN'; end if;
+  if not public.nodes_ok(p_class, v_nodes) then raise exception 'INVALID_NODE'; end if;
+  select array_agg(distinct trim(x)) into v_codes from unnest(coalesce(p_codes, '{}')) x where trim(x) <> '';
+  select coalesce(array_agg(c2), '{}') into v_missing from unnest(coalesce(v_codes, '{}')) c2
+   where not exists (select 1 from public.students s where s.code = c2);
+  foreach c in array coalesce(v_codes, '{}') loop
+    continue when c = any (v_missing);
+    select * into ex from public.class_students where class_id = p_class and student_code = c;
+    if not found then
+      insert into public.class_students (class_id, student_code, node_ids) values (p_class, c, v_nodes);
+      v_added := v_added + 1;
+    elsif ex.node_ids is not null then
+      update public.class_students set node_ids = case when v_nodes is null then null
+          else (select array_agg(distinct u) from unnest(ex.node_ids || v_nodes) u) end
+       where class_id = p_class and student_code = c;
+      v_upd := v_upd + 1;
+    end if;
+  end loop;
+  return jsonb_build_object('added', v_added, 'updated', v_upd, 'missing', to_jsonb(v_missing));
+end $$;
+
+-- Dat lai danh sach module cua 1 hoc vien trong lop (null/rong = tat ca)
+create or replace function public.set_student_nodes(p_class uuid, p_code text, p_nodes uuid[])
+returns void language plpgsql security definer set search_path = public as $$
+declare v_nodes uuid[] := case when p_nodes is null or cardinality(p_nodes) = 0 then null else p_nodes end;
+begin
+  if not public.can_manage_class(p_class) then raise exception 'FORBIDDEN'; end if;
+  if not public.nodes_ok(p_class, v_nodes) then raise exception 'INVALID_NODE'; end if;
+  update public.class_students set node_ids = v_nodes where class_id = p_class and student_code = p_code;
+  if not found then raise exception 'STUDENT_NOT_FOUND'; end if;
+end $$;
+
+-- create_class: them p_nodes, chep node_id sang cac buoi
+drop function if exists public.create_class(text, uuid, date, text[], date);
+create or replace function public.create_class(
+  p_name text, p_type uuid, p_start date, p_codes text[], p_grad date default null, p_nodes uuid[] default null
+) returns uuid language plpgsql security definer set search_path = public as $$
+declare cid uuid; v_nodes uuid[] := case when p_nodes is null or cardinality(p_nodes) = 0 then null else p_nodes end;
+begin
+  if not public.is_staff() then raise exception 'FORBIDDEN'; end if;
+  if coalesce(trim(p_name), '') = '' then raise exception 'NAME_REQUIRED'; end if;
+  if v_nodes is not null and exists (select 1 from unnest(v_nodes) x
+       where not exists (select 1 from public.course_nodes n where n.id = x and n.class_type_id = p_type)) then
+    raise exception 'INVALID_NODE';
+  end if;
+  insert into public.classes (name, class_type_id, start_date, created_by)
+  values (trim(p_name), p_type, p_start, auth.uid()) returning id into cid;
+  insert into public.class_sessions (class_id, session_no, content, session_date, shift, counts_absent, teacher_email, node_id)
+  select cid, t.session_no, t.content,
+         case when t.day_no is null then p_start + (t.session_no - 1) else public.add_workdays(p_start, t.day_no - 1) end,
+         t.shift, t.counts_absent, public.my_email(), t.node_id
+    from public.class_type_sessions t where t.class_type_id = p_type;
+  insert into public.class_students (class_id, student_code, node_ids)
+  select cid, s.code, v_nodes from public.students s
+   where upper(s.code) = any (select upper(trim(x)) from unnest(coalesce(p_codes, '{}')) x)
+  on conflict do nothing;
+  update public.classes set graduation_date = coalesce(p_grad, (select max(session_date) from public.class_sessions where class_id = cid)) where id = cid;
+  return cid;
+end $$;
+
+revoke all on function public.nodes_ok(uuid, uuid[]) from public, anon, authenticated;
+revoke all on function public.add_class_students(uuid, text[], uuid[]), public.set_student_nodes(uuid, text, uuid[]),
+  public.create_class(text, uuid, date, text[], date, uuid[]) from public, anon;
+grant execute on function public.add_class_students(uuid, text[], uuid[]), public.set_student_nodes(uuid, text, uuid[]),
+  public.create_class(text, uuid, date, text[], date, uuid[]) to authenticated;
