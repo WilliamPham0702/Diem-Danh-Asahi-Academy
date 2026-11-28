@@ -26,7 +26,7 @@
     CLASS_ENDED: 'Lớp học đã kết thúc, không thể thực hiện thao tác này',
     ONLY_CREATOR_END: 'Chỉ giảng viên tạo lớp hoặc admin mới được kết thúc lớp',
     ONLY_ADMIN_REOPEN: 'Chỉ admin mới mở lại được lớp đã kết thúc',
-    QR_OTHER_OPENER: 'Giảng viên/trợ giảng khác đang mở QR ở vị trí khác nên bạn chưa mở được mã này',
+    QR_OTHER_OPENER: 'Giảng viên đang mở QR ở vị trí khác nên trợ giảng chưa mở được mã này',
     NO_TEACHER: 'Buổi này chưa phân công giảng viên hoặc trợ giảng. Hãy chọn người dạy trong trang lớp',
     INVALID_TA: 'Trợ giảng không hợp lệ. Hãy chọn trợ giảng của lớp trước',
     STUDENT_NOT_FOUND: 'Không tìm thấy học viên',
@@ -154,7 +154,7 @@
     student: [['home', 'Trang chủ'], ['scan', 'Điểm danh'], ['history', 'Lịch sử'], ['account', 'Tài khoản']],
     teacher: [['schedule', 'Lịch dạy'], ['classes', 'Lớp học'], ['roster', 'Học viên'], ['reports', 'Báo cáo'], ['account', 'Tài khoản']],
     admin: [['schedule', 'Lịch dạy'], ['classes', 'Lớp học'], ['roster', 'Học viên'], ['reports', 'Báo cáo'], ['types', 'Loại lớp'],
-      ['tas', 'Trợ giảng'], ['staff', 'Nhân sự'], ['account', 'Tài khoản']],
+      ['staff', 'Nhân sự'], ['account', 'Tài khoản']],
   };
   // Học viên được nâng lên trợ giảng: có thêm tab Lịch dạy
   function tabsOf() {
@@ -282,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-40';
+  const APP_VERSION = '2026.11.28-41';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -491,7 +491,7 @@
     const views = {
       home: viewHome, scan: viewScan, history: viewHistory, account: viewAccount,
       classes: viewClasses, schedule: viewSchedule, class: viewClass, session: viewSession,
-      roster: viewRoster, reports: viewReports, types: viewTypes, staff: viewStaff, tas: viewTAs,
+      roster: viewRoster, reports: viewReports, types: viewTypes, staff: viewStaff,
     };
     Promise.resolve(views[route](el, param)).catch((e) => {
       console.error(e);
@@ -1895,7 +1895,8 @@
         <div><label>Họ tên</label><input id="sn" required></div>
         <div><label>Quyền</label><select id="sr"><option value="teacher">Giảng viên</option><option value="admin">Admin</option></select></div>
         <div style="align-self:end"><button class="btn pink">Thêm vào danh sách</button></div></form></div>
-      <div class="card"><div id="t">Đang tải...</div></div>`;
+      <div class="card"><div id="t">Đang tải...</div></div><div id="tamgr"></div>`;
+    viewTAs($('#tamgr')).catch((e) => toast(errMsg(e), 'bad'));
     const allowed = await q(db.from('allowed_staff').select('*').order('email'));
     const profs = await q(db.from('profiles').select('id, email, role').in('role', ['admin', 'teacher']));
     const pmap = {}; profs.forEach((p) => { pmap[p.email.toLowerCase()] = p; });
@@ -1920,9 +1921,9 @@
 
   // ================================================================ QUẢN LÝ TRỢ GIẢNG (admin)
   async function viewTAs(el) {
-    if (me.role !== 'admin') { el.innerHTML = '<div class="card"><p>Chỉ admin mới quản lý trợ giảng.</p></div>'; return; }
-    el.innerHTML = `<div class="card"><h2>Quản lý trợ giảng</h2>
-        <p class="muted small">Học viên được nâng lên trợ giảng vẫn điểm danh bình thường và có thêm tab <b>Lịch dạy</b>, mở được mã QR ở các buổi được phân công. Mỗi lớp có 1 trợ giảng, chọn trong trang lớp.</p>
+    if (me.role !== 'admin') return;
+    el.innerHTML = `<div class="card"><h2>Trợ giảng</h2>
+        <p class="muted small">Học viên được nâng lên trợ giảng vẫn điểm danh bình thường và có thêm tab <b>Lịch dạy</b>, mở được mã QR ở các buổi được phân công. Mỗi lớp có 1 trợ giảng, chọn trong trang lớp. Nếu giảng viên và trợ giảng ở xa nhau (trên 200 m) thì giảng viên được ưu tiên: giảng viên chưa mở QR thì trợ giảng mới mở được.</p>
         <label>Thêm trợ giảng: tìm học viên (mã hoặc họ tên)</label>
         <input id="tq" placeholder="Gõ mã hoặc tên..." autocomplete="off">
         <div class="pick" id="tl"><div class="small muted" style="padding:10px">Đang tải...</div></div></div>
