@@ -282,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-64';
+  const APP_VERSION = '2026.11.28-65';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -1071,7 +1071,7 @@
         const d = new Date(start + 'T00:00:00Z');
         if (withDay.length) { let k = 0; while (k < n - 1) { d.setUTCDate(d.getUTCDate() + 1); if (d.getUTCDay() % 6 !== 0) k++; } }
         else d.setUTCDate(d.getUTCDate() + Math.max(n - 1, 0));
-        $('#cg', m).value = iso(d);
+        setDate($('#cg', m), iso(d));
       }
       $('#cg', m).onchange = () => { gradTouched = true; };
       const drawNP = () => { const tid = $('#ct', m).value; const ty = types.find((x) => x.id === tid);
@@ -1089,8 +1089,8 @@
         if (i.code) $('#cn', m).value = i.code;
         if (ty) { $('#ct', m).value = ty.id; drawNP(); }
         const d1 = i.days.length ? i.days.slice().sort((a, b) => a.no - b.no)[0].date : i.start;
-        if (d1) { $('#cd', m).value = d1; autoGrad(); }
-        if (i.end) { $('#cg', m).value = i.end; gradTouched = true; }
+        if (d1) { setDate($('#cd', m), d1); autoGrad(); }
+        if (i.end) { setDate($('#cg', m), i.end); gradTouched = true; }
         if (i.location) $('#cl', m).value = i.location;
         $('#cinfo', m).innerHTML = `Đã đọc sheet THONG TIN LOP: <b>${esc(i.code || '')}</b>${ty ? '' : ' · <span style="color:#c0392b">chưa khớp khoá học, hãy chọn tay</span>'}${i.teacher ? ' · GVCN ' + esc(i.teacher) : ''}`;
       };
@@ -2313,6 +2313,8 @@
     await load();
   }
 
+  // gán ngày bằng code: phải bắn sự kiện để chữ dd/mm/yy cập nhật theo
+  function setDate(inp, v) { inp.value = v || ''; inp.dispatchEvent(new Event('input', { bubbles: true })); }
   // Ô ngày hiển thị dạng dd/mm/yy (ô chọn ngày gốc của trình duyệt vẫn dùng để chọn, nhưng được ẩn đi)
   function enhanceDates(root) {
     $$('input[type="date"]:not(.dn)', root || document).forEach((inp) => {
