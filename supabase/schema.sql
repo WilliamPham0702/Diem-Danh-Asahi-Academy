@@ -1196,3 +1196,45 @@ alter table public.class_type_sessions drop constraint if exists class_type_sess
 alter table public.class_type_sessions add constraint class_type_sessions_shift_check check (shift in ('sang','chieu','toi'));
 alter table public.class_sessions drop constraint if exists class_sessions_shift_check;
 alter table public.class_sessions add constraint class_sessions_shift_check check (shift in ('sang','chieu','toi'));
+
+-- v61: thêm học viên vào lớp theo phạm vi học. Đã có phần học này (hoặc dài hơn) -> giữ nguyên; thiếu -> mở rộng (hợp node_ids).
+create or replace function public.node_cover(p_class uuid, p_nodes uuid[])
+returns uuid[] language sql stable security definer set search_path = public as $$
+  select coalesce(array_agg(n.id), '{}') from course_nodes n join classes c on c.class_type_id = n.class_type_id
+  where c.id = p_class and (p_nodes is null or n.id = any(p_nodes) or n.parent_id = any(p_nodes));
+$$;
+revoke all on function public.node_cover(uuid, uuid[]) from public, anon;
+grant execute on function public.node_cover(uuid, uuid[]) to authenticated;
+
+create or replace function public.add_class_students(p_class uuid, p_codes text[], p_nodes uuid[] default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_nodes uuid[] := case when p_nodes is null or cardinality(p_nodes) = 0 then null else p_nodes end;
+  v_codes text[]; v_added int := 0; v_upd int := 0; v_skip int := 0; v_missing text[]; c text; ex record;
+  v_new uuid[]; v_old uuid[];
+begin
+  if not public.can_manage_class(p_class) then raise exception 'FORBIDDEN'; end if;
+  if not public.nodes_ok(p_class, v_nodes) then raise exception 'INVALID_NODE'; end if;
+  v_new := public.node_cover(p_class, v_nodes);
+  select array_agg(distinct trim(x)) into v_codes from unnest(coalesce(p_codes, '{}')) x where trim(x) <> '';
+  select coalesce(array_agg(c2), '{}') into v_missing from unnest(coalesce(v_codes, '{}')) c2
+   where not exists (select 1 from public.students s where s.code = c2);
+  foreach c in array coalesce(v_codes, '{}') loop
+    continue when c = any (v_missing);
+    select * into ex from public.class_students where class_id = p_class and student_code = c;
+    if not found then
+      insert into public.class_students (class_id, student_code, node_ids) values (p_class, c, v_nodes);
+      v_added := v_added + 1;
+    else
+      v_old := public.node_cover(p_class, ex.node_ids);
+      if v_new <@ v_old then
+        v_skip := v_skip + 1;
+      else
+        update public.class_students set node_ids = case when v_nodes is null then null
+            else (select array_agg(distinct u) from unnest(ex.node_ids || v_nodes) u) end
+         where class_id = p_class and student_code = c;
+        v_upd := v_upd + 1;
+      end if;
+    end if;
+  end loop;
+  return jsonb_build_object('added', v_added, 'updated', v_upd, 'skipped', v_skip, 'missing', to_jsonb(v_missing));
+end $$;

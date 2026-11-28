@@ -282,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-60';
+  const APP_VERSION = '2026.11.28-61';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -814,11 +814,8 @@
 
   async function importStudents(file) {
     const { rows, skipped } = await readStudentsFile(file);
-    for (let i = 0; i < rows.length; i += 400) {
-      const { error } = await db.from('students').upsert(rows.slice(i, i + 400), { onConflict: 'code' });
-      if (error) throw error;
-    }
-    return { codes: rows.map((r) => r.code), count: rows.length, skipped };
+    const st = await addToStore(rows);
+    return { codes: st.codes, count: rows.length, skipped, added: st.added, existed: st.existed };
   }
 
   function parseCodes(text) {
@@ -886,12 +883,13 @@
   }
   // Ba ô chọn nối tiếp: cấp 1 (khoá, cố định) -> cấp 2 (module) -> cấp 3 (nhóm). "Tất cả" ở trên đầu mỗi ô.
   function renderNodePicker(m, courseNodes, courseName, sessions) {
-    const box = $('#npbox', m); if (!box) return;
+    const box = $('#npbox', m); if (!box) return; box._nodes = courseNodes;
     const l2 = courseNodes.filter((n) => !n.parent_id);
     if (!l2.length) { box.innerHTML = ''; return; }
     box.innerHTML = `<div class="cform"><div><label>Cấp 1: khoá học</label><select id="np1" disabled><option>${esc(courseName || '')}</option></select></div>
       <div><label>Cấp 2: module</label><select id="np2"><option value="">Tất cả</option>${l2.map((n) => `<option value="${n.id}">${esc((courseName || '') + '-' + n.code)}</option>`).join('')}</select></div>
       <div class="f-full"><label>Cấp 3: nhóm</label><select id="np3" disabled><option value="">Tất cả</option></select></div></div>
+      <div class="small muted">Chọn M1 = học từ M1 đến hết khoá (gồm cả M2). Chọn M2 = chỉ học M2, các buổi M1 sẽ xám.</div>
       <div class="small npsum" id="npsum"></div>`;
     const sum = () => { $('#npsum', m).innerHTML = sessionSummary(nodePickerValue(m), sessions || [], courseNodes); };
     $('#np2', m).onchange = () => {
@@ -902,10 +900,31 @@
     };
     $('#np3', m).onchange = sum; sum();
   }
+  // Cấp 2 = học từ module đó đến hết khoá (M1 gồm cả M2; M2 chỉ M2). Cấp 3 chọn cụ thể = chỉ nhóm đó.
   function nodePickerValue(m) {
     const a = $('#np2', m); if (!a || !a.value) return null;
     const b = $('#np3', m);
-    return [b && b.value ? b.value : a.value];
+    if (b && b.value) return [b.value];
+    const nodes = ($('#npbox', m) || {})._nodes || [];
+    const l2 = nodes.filter((n) => !n.parent_id).sort((x, y) => (x.sort_no || 0) - (y.sort_no || 0));
+    const cur = l2.find((n) => n.id === a.value);
+    if (!cur) return [a.value];
+    const ids = l2.filter((n) => (n.sort_no || 0) >= (cur.sort_no || 0)).map((n) => n.id);
+    return ids.length === l2.length ? null : ids;
+  }
+  // Thêm vào kho học viên: mã đã có thì giữ nguyên, chưa có thì thêm mới, không trùng
+  async function addToStore(rows) {
+    const uniq = {}; rows.forEach((r) => { if (r.code && !uniq[r.code]) uniq[r.code] = r; });
+    const list = Object.values(uniq); const have = new Set();
+    for (let i = 0; i < list.length; i += 100) {
+      (await q(db.from('students').select('code').in('code', list.slice(i, i + 100).map((r) => r.code)))).forEach((d) => have.add(d.code));
+    }
+    const fresh = list.filter((r) => !have.has(r.code));
+    for (let i = 0; i < fresh.length; i += 400) {
+      const { error } = await db.from('students').upsert(fresh.slice(i, i + 400), { onConflict: 'code', ignoreDuplicates: true });
+      if (error) throw error;
+    }
+    return { codes: list.map((r) => r.code), added: fresh.length, existed: list.length - fresh.length };
   }
   // Mô tả module của 1 học viên: danh sách mã ngắn (M1, M2-TT) hoặc "Tất cả module"
   function nodeTags(nodeIds, courseNodes) {
@@ -1257,31 +1276,22 @@
       $('#af', m).onsubmit = (e) => {
         e.preventDefault();
         busy($('#ok', m), async () => {
-          const existing = new Set((await q(db.from('class_students').select('student_code').eq('class_id', classId))).map((x) => x.student_code));
           let codes = Array.from(sel.keys());
           const nodesVal = nodePickerValue(m);
-          let dup = 0;
+          let store = null;
           const f = $('#ax', m).files[0];
           if (f) {
-            const { rows } = await readStudentsFile(f);
-            const fresh = nodesVal ? rows : rows.filter((r) => !existing.has(r.code));
-            dup += rows.length - fresh.length;
-            for (let i = 0; i < fresh.length; i += 400) {
-              const { error } = await db.from('students').upsert(fresh.slice(i, i + 400), { onConflict: 'code' });
-              if (error) throw error;
-            }
-            codes = codes.concat(fresh.map((r) => r.code));
+            const { rows } = await readStudentsFile(f); // file lỗi thì báo lỗi, không thêm gì
+            store = await addToStore(rows); // kho: mã đã có giữ nguyên, mã mới thì thêm
+            codes = codes.concat(store.codes);
           }
           codes = Array.from(new Set(codes));
-          if (!nodesVal) { const already = codes.filter((c) => existing.has(c)); dup += already.length; codes = codes.filter((c) => !existing.has(c)); }
-          if (!codes.length) {
-            if (dup) { close(); toast(`Tất cả ${dup} học viên đã có trong lớp, không thêm lại`, 'ok'); return; }
-            throw new Error('Chưa chọn file hoặc học viên nào');
-          }
+          if (!codes.length) throw new Error('Chưa chọn file hoặc học viên nào');
           const res = await q(db.rpc('add_class_students', { p_class: classId, p_codes: codes, p_nodes: nodesVal }));
           const miss = res.missing || [];
           close();
-          toast(`Đã thêm ${res.added} học viên${res.updated ? `, cập nhật module cho ${res.updated} người` : ''}${dup ? `, bỏ qua ${dup} học viên đã có trong lớp` : ''}`, 'ok');
+          toast(`Vào lớp: thêm ${res.added}${res.updated ? `, mở rộng phần học ${res.updated}` : ''}${res.skipped ? `, giữ nguyên ${res.skipped} (đã có phần học này)` : ''}`
+            + (store ? `. Kho: thêm mới ${store.added}, đã có ${store.existed}` : ''), 'ok');
           if (miss.length) toast(`Không tìm thấy mã: ${miss.slice(0, 8).join(', ')}`, 'err');
           render();
         });
@@ -1623,7 +1633,7 @@
       const f = e.target.files[0]; if (!f) return;
       busy(null, async () => {
         const r = await importStudents(f);
-        toast(`Đã nhập ${r.count} học viên${r.skipped ? `, bỏ qua ${r.skipped} dòng thiếu thông tin` : ''}`, 'ok');
+        toast(`Kho học viên: thêm mới ${r.added}, đã có sẵn ${r.existed} (giữ nguyên)${r.skipped ? `, bỏ qua ${r.skipped} dòng thiếu thông tin` : ''}`, 'ok');
         render();
       });
     }; }
