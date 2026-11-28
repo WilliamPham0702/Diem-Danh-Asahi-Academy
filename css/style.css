@@ -522,3 +522,10 @@ table.ced td.ct, table.ced td:nth-child(7) { min-width: 220px; }
 /* v52: buổi không thuộc module của học viên */
 .sc.off { background: #f3f4f8; color: #c3c7d6; border: 1px dashed #d5d8e4; cursor: not-allowed; }
 .pi.off { opacity: .5; }
+
+/* v53: cảnh báo vắng theo module */
+.warnbox { padding: 10px 14px; }
+.warnbox summary { cursor: pointer; }
+.warnbox.w-over { border-color: #f1c2c8; background: #fff6f7; }
+.warnbox.w-full { border-color: #f3dca6; background: #fffaf0; }
+.trow.flash { outline: 2px solid var(--pink, #e5367a); transition: outline .3s; }

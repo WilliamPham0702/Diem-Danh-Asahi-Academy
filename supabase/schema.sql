@@ -1141,3 +1141,7 @@ begin
 end $$;
 revoke all on function public.search_students(text, uuid) from public, anon;
 grant execute on function public.search_students(text, uuid) to authenticated;
+
+-- v53: ngày học viên vào lớp (buổi mở trước ngày này không tính vắng); dòng cũ để null = tính từ đầu
+alter table public.class_students add column if not exists added_at timestamptz;
+alter table public.class_students alter column added_at set default now();

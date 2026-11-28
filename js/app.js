@@ -282,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-52';
+  const APP_VERSION = '2026.11.28-53';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -1004,7 +1004,7 @@
   async function viewClass(el, id) {
     const cls = await q(db.from('classes').select('*, class_types(name, max_absent)').eq('id', id).single());
     const sessions = await q(db.from('class_sessions').select('*').eq('class_id', id).order('session_no'));
-    const roster = await q(db.from('class_students').select('student_code, node_ids, students(*)').eq('class_id', id));
+    const roster = await q(db.from('class_students').select('student_code, node_ids, added_at, students(*)').eq('class_id', id));
     const cnodes = cls.class_type_id ? (await loadNodes()).filter((n) => n.class_type_id === cls.class_type_id) : [];
     const nodeOfSession = (sx) => { const n = cnodes.find((x) => x.id === sx.node_id); return n ? nodeCode(cls.class_types?.name, n, cnodes) : ''; };
     const att = sessions.length ? await fetchAll(() => db.from('attendance')
@@ -1024,7 +1024,19 @@
     const attSet = new Set(att.map((a) => a.session_id + '|' + a.student_code));
     const attMap = {}; att.forEach((a) => { attMap[a.session_id + '|' + a.student_code] = a; });
     const maxAbsent = cls.class_types?.max_absent;
-    const absent = {}; roster.forEach((r) => { absent[r.student_code] = absentCount(sessions.filter((sx) => inScope(r, sx)), r.student_code, attSet); });
+    // Vắng tính theo module (cấp 2): mỗi module có số buổi được vắng riêng (mặc định 1). Không tính buổi MOF, buổi ngoài module, buổi mở trước ngày học viên vào lớp.
+    const exempt = (r, sx) => !!(r.added_at && sx.opened_at && sx.opened_at < r.added_at && !attSet.has(sx.id + '|' + r.student_code));
+    const modOf = (sx) => { const n = cnodes.find((x) => x.id === sx.node_id); if (!n) return null; return n.parent_id ? cnodes.find((x) => x.id === n.parent_id) || n : n; };
+    const absent = {}; const mstat = {}; const level = {};
+    roster.forEach((r) => {
+      const code = r.student_code; const mine = sessions.filter((sx) => inScope(r, sx) && !exempt(r, sx));
+      absent[code] = absentCount(mine, code, attSet);
+      const by = {};
+      mine.forEach((sx) => { const m = modOf(sx); const key = m ? m.id : '_'; const e = by[key] || (by[key] = { label: m ? m.code : 'Cả khoá', max: m ? (m.max_absent == null ? 1 : m.max_absent) : (cls.class_types?.max_absent ?? null), used: 0 });
+        if (sx.opened_at && sx.counts_absent !== false && !attSet.has(sx.id + '|' + code)) e.used++; });
+      mstat[code] = Object.values(by);
+      level[code] = mstat[code].some((e) => e.max != null && e.used > e.max) ? 2 : mstat[code].some((e) => e.max != null && e.used >= 1 && e.used === e.max) ? 1 : 0;
+    });
     const teachers = await q(db.rpc('list_teachers'));
     const tas = await q(db.rpc('list_tas')).catch(() => []);
     // ứng viên trợ giảng: học viên đã được nâng lên trợ giảng + giảng viên (giảng viên có thể là trợ giảng lớp khác)
@@ -1034,7 +1046,8 @@
     const classTA = cls.ta_email ? String(cls.ta_email).toLowerCase() : '';
     const ended = !!cls.ended_at;
     const canEnd = me.role === 'admin' || cls.created_by === me.id;
-    const warned = maxAbsent == null ? [] : roster.filter((r) => absent[r.student_code] > maxAbsent);
+    const over = roster.filter((r) => level[r.student_code] === 2); const full = roster.filter((r) => level[r.student_code] === 1);
+    const modTxt = (r, lv) => mstat[r.student_code].filter((e) => e.max != null && (lv === 2 ? e.used > e.max : e.used === e.max && e.used >= 1)).map((e) => `${esc(e.label)} ${e.used}/${e.max}`).join(', ');
     roster.sort((a, b) => String(a.students?.full_name).localeCompare(String(b.students?.full_name), 'vi'));
 
     el.innerHTML = `
@@ -1062,9 +1075,9 @@
           ${canEnd && !ended ? '<button class="btn ghost" id="endcls">Kết thúc lớp</button>' : ''}
           <button class="btn danger" id="del">Xóa lớp</button></div>
       </div>
-      ${warned.length ? `<div class="card" style="border-color:#f1c2c8;background:#fff6f7">
-        <h3 style="color:var(--bad)">⚠ Cảnh báo: ${warned.length} học viên vắng quá ${maxAbsent} buổi</h3>
-        <div class="small">${warned.map((r) => `<b>${esc(r.students?.full_name || r.student_code)}</b> (${esc(r.student_code)}): vắng ${absent[r.student_code]} buổi`).join('<br>')}</div></div>` : ''}
+      ${over.length || full.length ? `<div class="card warnbox ${over.length ? 'w-over' : 'w-full'}">
+        <details${over.length ? ' open' : ''}><summary><b>⚠ Cảnh báo vắng:</b> ${over.length ? `<span class="badge bad">${over.length} vượt</span> ` : ''}${full.length ? `<span class="badge warn">${full.length} hết lượt</span>` : ''}</summary>
+        <div class="small" style="margin-top:6px">${over.map((r) => `<a href="#" data-goto="${esc(r.student_code)}"><b>${esc(r.students?.full_name || r.student_code)}</b></a> · vượt ${modTxt(r, 2)}`).concat(full.map((r) => `<a href="#" data-goto="${esc(r.student_code)}">${esc(r.students?.full_name || r.student_code)}</a> · hết lượt ${modTxt(r, 1)}`)).join('<br>')}</div></details></div>` : ''}
       <div class="card"><h3>Các buổi học</h3>
         <div class="small muted">Muốn điểm danh tay hoặc hủy điểm danh: bấm <b>Chi tiết</b> ở buổi tương ứng.</div>
         <div class="srow shead"><div>Buổi học</div><div>Ngày học</div><div>Giảng viên dạy</div><div>Trợ giảng</div><div>Có mặt / thao tác</div></div>
@@ -1088,13 +1101,14 @@
             <div class="t-main"><b>${esc(s.full_name || r.student_code)}</b>
               <div class="small muted">${esc(r.student_code)}${s.title ? ' · ' + esc(s.title) : ''}</div>
               ${cnodes.length ? `<div class="pi-st">${nodeTags(r.node_ids, cnodes)} <span class="small muted">${sessions.filter((x) => inNodes(r.node_ids, x.node_id, cnodes)).length} buổi</span> ${ended ? '' : `<a href="#" data-nodes="${esc(r.student_code)}" class="small">Đổi module</a>`}</div>` : ''}</div>
-            <div class="small">Có mặt <b>${perStudent[r.student_code] || 0}/${sessions.filter((sx) => inScope(r, sx)).length}</b><br>Vắng ${absent[r.student_code] > 0 ? `<span class="badge ${maxAbsent != null && absent[r.student_code] > maxAbsent ? 'bad' : 'gray'}">${absent[r.student_code]}</span>` : '<b>0</b>'}</div>
-            <div>${sessGrid(sessions, attMap, r.student_code, !ended, (sx) => inScope(r, sx))}</div>
+            <div class="small">Có mặt <b>${perStudent[r.student_code] || 0}/${sessions.filter((sx) => inScope(r, sx)).length}</b><br>Vắng ${mstat[r.student_code].length ? mstat[r.student_code].map((e) => `<span class="badge ${e.max != null && e.used > e.max ? 'bad' : e.max != null && e.used >= 1 && e.used === e.max ? 'warn' : 'gray'}" title="${esc(e.label)}: vắng ${e.used}, được vắng ${e.max == null ? '—' : e.max}">${esc(e.label)} ${e.used}${e.max != null ? '/' + e.max : ''}</span>`).join(' ') : '<b>0</b>'}</div>
+            <div>${sessGrid(sessions, attMap, r.student_code, !ended, (sx) => inScope(r, sx) && !exempt(r, sx))}</div>
             <div class="t-act">${hasDevice.has(r.student_code) ? `<button class="btn sm ghost" data-reset="${esc(r.student_code)}">Đặt lại thiết bị</button>` : ''}
               <button class="btn sm ghost" data-resetpw="${esc(r.student_code)}">Đặt lại MK</button>
               <button class="btn sm danger" data-rm="${esc(r.student_code)}">Xóa</button></div></div>`; }).join('')}
         </div></div>`;
 
+    $$('[data-goto]', el).forEach((a) => { a.onclick = (e) => { e.preventDefault(); const k = a.dataset.goto; const row = $$('.trow', el).find((d) => d.textContent.includes(k)); if (row) { row.scrollIntoView({ behavior: 'smooth', block: 'center' }); row.classList.add('flash'); setTimeout(() => row.classList.remove('flash'), 1800); } }; });
     $$('[data-nodes]', el).forEach((a) => { a.onclick = (e) => {
       e.preventDefault(); const r = roster.find((x) => x.student_code === a.dataset.nodes);
       editStudentNodes(id, r.student_code, (r.students && r.students.full_name) || r.student_code, r.node_ids, cnodes, render); }; });
@@ -1269,7 +1283,7 @@
   // Ô trạng thái từng buổi của 1 học viên: ✓ đúng giờ (xanh) / M muộn (cam) / V vắng (đỏ) / · chưa học
   function sessGrid(sessions, attMap, code, editable, inScope) {
     return `<div class="sgrid">${sessions.map((s) => {
-      if (inScope && !inScope(s)) return `<span class="sc off" title="Buổi ${s.session_no}: học viên không học module này"><i>${s.session_no}</i>–</span>`;
+      if (inScope && !inScope(s)) return `<span class="sc off" title="Buổi ${s.session_no}: học viên không học buổi này"><i>${s.session_no}</i>–</span>`;
       const a = attMap[s.id + '|' + code];
       let c = 'none', t = '·', tip = 'Chưa học';
       if (a) { if (a.source !== 'manual' && a.late) { c = 'late'; t = 'M'; tip = 'Muộn'; } else { c = 'ok'; t = '✓'; tip = 'Có mặt'; } }
