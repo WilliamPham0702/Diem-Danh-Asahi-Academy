@@ -267,7 +267,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-32';
+  const APP_VERSION = '2026.11.28-33';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -540,20 +540,42 @@
     sang: ['Chúc bạn một buổi sáng như bình minh Nhật Bản: mỗi điều mới học hôm nay là một tia nắng cho sự nghiệp của bạn.',
       'Buổi sáng là trang giấy trắng. Hãy viết lên đó thật nhiều ý tưởng và nụ cười!',
       'Chúc bạn một buổi sáng bứt phá: học một điều, làm một điều, tiến thêm một bước.',
-      '新しい朝がはじまる, một buổi sáng mới bắt đầu. Hôm nay bạn sẽ giỏi hơn hôm qua!'],
+      '新しい朝がはじまる, một buổi sáng mới bắt đầu. Hôm nay bạn sẽ giỏi hơn hôm qua!',
+      'Bắt đầu ngày mới bằng một nụ cười. Nụ cười của bạn là cách tiếp đón đẹp nhất dành cho mọi người.',
+      'Chúc bạn sáng nay đầu óc minh mẫn, tinh thần phấn khởi và học được thật nhiều điều hay.',
+      'Mỗi sáng thức dậy là một cơ hội mới để trở thành phiên bản tốt hơn của chính mình.',
+      'Chỉ cần mỗi ngày tiến thêm một chút, bạn sẽ đi rất xa. Chúc bạn một buổi sáng đầy cảm hứng!'],
     chieu: ['Chúc bạn một buổi chiều tràn đầy năng lượng: kiên trì thêm chút nữa, thành quả đang ở rất gần.',
       'Giữa ngày là lúc khẳng định bản lĩnh. Chúc bạn tập trung, vui và thật hiệu quả!',
-      'Mỗi buổi học là một viên gạch xây nên phiên bản xuất sắc nhất của bạn. Chúc bạn một buổi chiều thật đáng giá!'],
+      'Mỗi buổi học là một viên gạch xây nên phiên bản xuất sắc nhất của bạn. Chúc bạn một buổi chiều thật đáng giá!',
+      'Chúc bạn buổi chiều thật nhiều niềm vui học hỏi. Điều bạn học hôm nay sẽ là hành trang cho ngày mai.',
+      'Mệt một chút cũng không sao, bạn đang tiến gần hơn đến mục tiêu của mình rồi. Cố lên nhé!',
+      'Một buổi chiều chăm chỉ hôm nay là nền móng cho thành công của những ngày sau.',
+      'Chúc bạn giữ vững tinh thần, lắng nghe, đặt câu hỏi và mang về thật nhiều giá trị.'],
     toi: ['Chúc bạn một buổi tối bình yên, nhìn lại những gì đã học và tự hào về bản thân nhé.',
       'Ngày hôm nay bạn đã cố gắng rất nhiều. Chúc bạn một buổi tối thật nhẹ nhõm và một giấc ngủ ngon!',
-      'Sau mỗi ngày nỗ lực là một buổi tối xứng đáng nghỉ ngơi. Chúc bạn tối nay thật ấm áp!'],
+      'Sau mỗi ngày nỗ lực là một buổi tối xứng đáng nghỉ ngơi. Chúc bạn tối nay thật ấm áp!',
+      'Chúc bạn buổi tối học tập hiệu quả. Kiến thức hôm nay sẽ trở thành tự tin của ngày mai.',
+      'Đèn sáng ở đâu, nơi đó có người đang cố gắng. Bạn thật đáng khâm phục, chúc bạn một buổi tối tốt lành!',
+      'Cảm ơn bạn đã dành thời gian cho việc học. Chúc bạn một buổi tối vui và thật nhiều năng lượng.',
+      'Mỗi buổi tối học thêm một chút là bạn đã vượt qua chính mình của hôm qua.'],
   };
+  // Xoay vòng: xáo trộn rồi lấy lần lượt, hết vòng mới xáo lại; không lặp câu vừa dùng
   function wishNow() {
     const h = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' })).getHours();
     const part = h < 12 ? 'sang' : h < 18 ? 'chieu' : 'toi';
     const word = { sang: 'buổi sáng', chieu: 'buổi chiều', toi: 'buổi tối' }[part];
     const list = WISHES[part];
-    return { word, text: list[Math.floor(Math.random() * list.length)] };
+    let bag = [], last = -1;
+    try { bag = JSON.parse(localStorage.getItem('wb_' + part) || '[]').filter((i) => i < list.length); last = +localStorage.getItem('wl_' + part); } catch (e) { bag = []; }
+    if (!bag.length) {
+      bag = list.map((_, i) => i);
+      for (let i = bag.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [bag[i], bag[j]] = [bag[j], bag[i]]; }
+      if (bag.length > 1 && bag[bag.length - 1] === last) [bag[0], bag[bag.length - 1]] = [bag[bag.length - 1], bag[0]];
+    }
+    const i = bag.pop();
+    try { localStorage.setItem('wb_' + part, JSON.stringify(bag)); localStorage.setItem('wl_' + part, String(i)); } catch (e) { /* bỏ qua */ }
+    return { word, text: list[i] };
   }
   async function viewHome(el) {
     const w = wishNow();
@@ -934,33 +956,28 @@
         <h3 style="color:var(--bad)">⚠ Cảnh báo: ${warned.length} học viên vắng quá ${maxAbsent} buổi</h3>
         <div class="small">${warned.map((r) => `<b>${esc(r.students?.full_name || r.student_code)}</b> (${esc(r.student_code)}): vắng ${absent[r.student_code]} buổi`).join('<br>')}</div></div>` : ''}
       <div class="card"><h3>Các buổi học</h3>
-        <div class="tbl-wrap"><table>
-          <tr><th>Buổi</th><th>Nội dung</th><th>Ngày học</th><th>Ca</th><th>Giảng viên dạy</th><th>Trạng thái</th><th>Có mặt</th><th></th></tr>
-          ${sessions.map((s) => `<tr>
-            <td>${s.session_no}</td><td>${esc(s.content)}</td>
-            <td><input type="date" value="${s.session_date || ''}" data-date="${s.id}" style="width:150px"></td>
-            <td>${s.shift ? SHIFT_LABEL[s.shift] : ''}</td>
-            <td><select data-teacher="${s.id}" style="min-width:150px"><option value="">(Chưa gán)</option>${teachers.map((t) => `<option value="${esc(t.email)}"${t.email === String(s.teacher_email || '').toLowerCase() ? ' selected' : ''}>${esc(t.full_name || t.email)}${t.has_account ? '' : ' (chưa tạo TK)'}</option>`).join('')}</select></td>
-            <td>${s.closed ? '<span class="badge gray">Đã đóng</span>' : s.opened_at ? '<span class="badge ok">Đã mở</span>' : '<span class="badge warn">Chưa mở</span>'}</td>
-            <td>${perSession[s.id] || 0}/${total}</td>
-            <td class="act">
-              ${ended ? '' : qrButtons(s, true)}
-              <a class="btn sm" href="#/session/${s.id}">Chi tiết</a></td></tr>`).join('')}
-        </table></div></div>
+        <div class="small muted">Muốn điểm danh tay hoặc hủy điểm danh: bấm <b>Chi tiết</b> ở buổi tương ứng.</div>
+        ${sessions.map((s) => `<div class="scard">
+          <div class="row between"><b>Buổi ${s.session_no}${s.shift ? ' · ' + SHIFT_LABEL[s.shift] : ''}</b>
+            ${s.closed ? '<span class="badge gray">Đã đóng</span>' : s.opened_at ? '<span class="badge ok">Đã mở</span>' : '<span class="badge warn">Chưa mở</span>'}</div>
+          <div class="small">${esc(s.content || '')}</div>
+          <div class="grid2"><div><label>Ngày học</label><input type="date" value="${s.session_date || ''}" data-date="${s.id}"></div>
+            <div><label>Giảng viên dạy</label><select data-teacher="${s.id}"><option value="">(Chưa gán)</option>${teachers.map((t) => `<option value="${esc(t.email)}"${t.email === String(s.teacher_email || '').toLowerCase() ? ' selected' : ''}>${esc(t.full_name || t.email)}${t.has_account ? '' : ' (chưa tạo TK)'}</option>`).join('')}</select></div></div>
+          <div class="row between" style="margin-top:8px"><span class="small">Có mặt <b>${perSession[s.id] || 0}/${total}</b></span>
+            <span class="pi-act">${ended ? '' : qrButtons(s, true)} <a class="btn sm" href="#/session/${s.id}">Chi tiết</a></span></div></div>`).join('')}
+      </div>
       <div class="card"><h3>Học viên (${total})</h3>
-        <div class="small muted" style="margin-bottom:6px"><span class="sc ok inl">✓</span> đúng giờ &nbsp;<span class="sc late inl">M</span> muộn &nbsp;<span class="sc abs inl">V</span> vắng &nbsp;<span class="sc none inl">·</span> chưa học &nbsp;(kéo ngang để xem các buổi sau)</div>
-        <div class="tbl-wrap"><table>
-          <tr><th>Mã</th><th>Họ tên</th><th>Chức danh</th><th>Có mặt</th><th>Vắng</th><th></th><th>Từng buổi</th></tr>
-          ${roster.map((r) => { const s = r.students || {}; return `<tr>
-            <td>${esc(r.student_code)}</td><td>${esc(s.full_name)}</td>
-            <td>${esc(s.title)}</td>
-            <td>${perStudent[r.student_code] || 0}/${sessions.length}</td>
-            <td>${absent[r.student_code] > 0 ? `<span class="badge ${maxAbsent != null && absent[r.student_code] > maxAbsent ? 'bad' : 'gray'}">${absent[r.student_code]}</span>` : '0'}</td>
-            <td class="act">${hasDevice.has(r.student_code) ? `<button class="btn sm ghost" data-reset="${esc(r.student_code)}">Đặt lại thiết bị</button>` : ''}
+        <div class="small muted" style="margin-bottom:6px"><span class="sc ok inl">✓</span> đúng giờ &nbsp;<span class="sc late inl">M</span> muộn &nbsp;<span class="sc abs inl">V</span> vắng &nbsp;<span class="sc none inl">·</span> chưa học</div>
+        <div class="plist">
+          ${roster.map((r) => { const s = r.students || {}; return `<div class="pi">
+            <div class="pi-main"><b>${esc(s.full_name || r.student_code)}</b>
+              <div class="small muted">${esc(r.student_code)}${s.title ? ' · ' + esc(s.title) : ''}</div>
+              <div class="pi-st">Có mặt <b>${perStudent[r.student_code] || 0}/${sessions.length}</b> · Vắng ${absent[r.student_code] > 0 ? `<span class="badge ${maxAbsent != null && absent[r.student_code] > maxAbsent ? 'bad' : 'gray'}">${absent[r.student_code]}</span>` : '<b>0</b>'}</div></div>
+            <div class="pi-full">${sessGrid(sessions, attMap, r.student_code)}</div>
+            <div class="pi-act pi-full">${hasDevice.has(r.student_code) ? `<button class="btn sm ghost" data-reset="${esc(r.student_code)}">Đặt lại thiết bị</button>` : ''}
               <button class="btn sm ghost" data-resetpw="${esc(r.student_code)}">Đặt lại MK</button>
-              <button class="btn sm danger" data-rm="${esc(r.student_code)}">Xóa</button></td>
-            <td>${sessGrid(sessions, attMap, r.student_code)}</td></tr>`; }).join('')}
-        </table></div></div>`;
+              <button class="btn sm danger" data-rm="${esc(r.student_code)}">Xóa</button></div></div>`; }).join('')}
+        </div></div>`;
 
     $('#loc').onchange = () => busy(null, async () => { await q(db.from('classes').update({ location: $('#loc').value.trim() || null }).eq('id', id)); toast('Đã lưu địa điểm', 'ok'); });
     $('#oen').onchange = () => busy(null, async () => { await q(db.from('classes').update({ open_enrollment: $('#oen').checked }).eq('id', id)); toast($('#oen').checked ? 'Đã mở đăng ký cho học viên' : 'Đã đóng đăng ký', 'ok'); });
@@ -1022,22 +1039,50 @@
   }
 
   function openAddStudents(classId) {
+    const sel = new Set(); let all = []; let inClass = new Set();
     modal(`<h2>Thêm học viên vào lớp</h2>
       <form id="af">
-        <label>File Excel danh sách</label><input id="ax" type="file" accept=".xlsx,.xls,.csv">
-        <div class="small muted"><a href="#" id="tpl">Tải file mẫu</a></div>
-        <label>Hoặc nhập mã học viên đã có trong hệ thống</label>
-        <textarea id="ac" placeholder="000000089, 000000090, ..."></textarea>
+        <label>Tìm học viên trong hệ thống (mã hoặc họ tên)</label>
+        <input id="as" placeholder="Gõ mã hoặc tên rồi chọn..." autocomplete="off">
+        <div class="chips" id="achips"></div>
+        <div class="pick" id="alist"><div class="small muted" style="padding:10px">Đang tải danh sách...</div></div>
+        <details class="more"><summary>Hoặc thêm bằng file Excel / dán danh sách mã</summary>
+          <label>File Excel danh sách</label><input id="ax" type="file" accept=".xlsx,.xls,.csv">
+          <div class="small muted"><a href="#" id="tpl">Tải file mẫu</a></div>
+          <label>Mã học viên (cách nhau bằng dấu phẩy hoặc xuống dòng)</label>
+          <textarea id="ac" placeholder="000000089, 000000090, ..."></textarea></details>
         <div class="row" style="margin-top:14px"><button class="btn pink" id="ok">Thêm</button>
           <button type="button" class="btn ghost" id="cancel">Hủy</button></div>
       </form>`, (m, close) => {
+      const drawChips = () => {
+        $('#achips', m).innerHTML = Array.from(sel).map((c) => { const st = all.find((x) => x.code === c); return `<span class="badge ok" data-x="${esc(c)}" title="Bỏ chọn">${esc(st ? st.full_name : c)} ✕</span>`; }).join('');
+        $$('[data-x]', m).forEach((b) => { b.onclick = () => { sel.delete(b.dataset.x); drawChips(); draw(); }; });
+        $('#ok', m).textContent = sel.size ? `Thêm (${sel.size})` : 'Thêm';
+      };
+      const draw = () => {
+        const k = norm($('#as', m).value);
+        const list = all.filter((s) => !k || norm(s.code + ' ' + s.full_name).includes(k));
+        const shown = list.slice(0, 40);
+        $('#alist', m).innerHTML = shown.length ? shown.map((s) => { const dis = inClass.has(s.code);
+          return `<label class="pk${dis ? ' dis' : ''}"><input type="checkbox" data-c="${esc(s.code)}"${dis ? ' disabled' : ''}${sel.has(s.code) ? ' checked' : ''}>
+            <span><b>${esc(s.full_name)}</b>${dis ? ' <span class="badge gray">Đã trong lớp</span>' : ''}<small>${esc(s.code)}${s.title ? ' · ' + esc(s.title) : ''}</small></span></label>`; }).join('')
+          + (list.length > 40 ? `<div class="small muted" style="padding:8px 10px">Còn ${list.length - 40} kết quả nữa, hãy gõ thêm để lọc.</div>` : '')
+          : '<div class="small muted" style="padding:10px">Không tìm thấy học viên nào.</div>';
+        $$('[data-c]', m).forEach((cb) => { cb.onchange = () => { if (cb.checked) sel.add(cb.dataset.c); else sel.delete(cb.dataset.c); drawChips(); }; });
+      };
+      Promise.all([
+        fetchAll(() => db.from('students').select('code, full_name, title').order('full_name').order('code')),
+        q(db.from('class_students').select('student_code').eq('class_id', classId)),
+      ]).then(([stu, ex]) => { all = stu; inClass = new Set(ex.map((x) => x.student_code)); draw(); drawChips(); })
+        .catch((e) => { $('#alist', m).innerHTML = `<div class="small" style="padding:10px;color:var(--bad)">${esc(errMsg(e))}</div>`; });
+      $('#as', m).oninput = draw;
       $('#tpl', m).onclick = (e) => { e.preventDefault(); downloadTemplate(); };
       $('#cancel', m).onclick = close;
       $('#af', m).onsubmit = (e) => {
         e.preventDefault();
         busy($('#ok', m), async () => {
           const existing = new Set((await q(db.from('class_students').select('student_code').eq('class_id', classId))).map((x) => x.student_code));
-          let codes = parseCodes($('#ac', m).value);
+          let codes = parseCodes($('#ac', m).value).concat(Array.from(sel));
           let dup = 0;
           const f = $('#ax', m).files[0];
           if (f) {
@@ -1055,7 +1100,7 @@
           codes = codes.filter((c) => !existing.has(c));
           if (!codes.length) {
             if (dup) { close(); toast(`Tất cả ${dup} học viên đã có trong lớp, không thêm lại`, 'ok'); return; }
-            throw new Error('Chưa có mã học viên nào');
+            throw new Error('Chưa chọn học viên nào');
           }
           const miss = await missingCodes(codes);
           const ok = codes.filter((c) => !miss.includes(c));
@@ -1129,15 +1174,23 @@
         <div class="stat" style="margin-top:12px">
           <div class="chip"><b>${stat['Đúng giờ']}</b>Đúng giờ</div><div class="chip"><b>${stat['Muộn']}</b>Muộn</div>
           <div class="chip"><b>${stat['Vắng']}</b>Vắng</div><div class="chip"><b>${roster.length}</b>Tổng</div><div class="chip"><b>${att.filter((x) => x.out_of_area === true).length}</b>Ngoài khu vực</div></div></div>
-      <div class="card"><div class="tbl-wrap"><table>
-        <tr><th>Mã</th><th>Họ tên</th><th>Chức danh</th><th>Trạng thái</th><th>Giờ điểm danh</th><th>Vị trí</th><th></th></tr>
-        ${rows.map(({ r, a, st }) => `<tr>
-          <td>${esc(r.student_code)}</td><td>${esc(r.students?.full_name)}</td><td>${esc(r.students?.title)}</td>
-          <td><span class="badge ${badge(st)}">${esc(st)}</span></td><td>${a ? esc(fmtTime(a.checked_at)) : ''}</td>
-          <td>${locBadge(a)}</td>
-          <td class="act">${ended ? '' : a ? `<button class="btn sm danger" data-undo="${a.id}">Hủy</button>`
-            : `<button class="btn sm ghost" data-manual="${esc(r.student_code)}" data-name="${esc(r.students?.full_name)}">Điểm danh tay</button>`}</td></tr>`).join('')}
-      </table></div></div>`;
+      <div class="card"><h3>Điểm danh buổi này</h3>
+        <div class="small muted">${ended ? 'Lớp đã kết thúc nên không sửa được điểm danh.' : 'Bấm <b>Điểm danh tay</b> để ghi có mặt, hoặc <b>Hủy điểm danh</b> để xóa điểm danh của học viên. Chỉ áp dụng cho buổi này.'}</div>
+        <input id="fs" placeholder="Tìm theo mã, tên..." style="margin-top:10px">
+        <div class="seg" id="fseg"><button data-f="all" class="on">Tất cả (${rows.length})</button><button data-f="no">Chưa điểm danh (${rows.filter((x) => !x.a).length})</button><button data-f="yes">Đã điểm danh (${rows.filter((x) => x.a).length})</button></div>
+        <div class="plist" id="pl">
+        ${rows.map(({ r, a, st }) => `<div class="pi" data-k="${esc(norm(r.student_code + ' ' + (r.students?.full_name || '')))}" data-has="${a ? 1 : 0}">
+          <div class="pi-main"><b>${esc(r.students?.full_name || r.student_code)}</b>
+            <div class="small muted">${esc(r.student_code)}${r.students?.title ? ' · ' + esc(r.students.title) : ''}</div>
+            <div class="pi-st"><span class="badge ${badge(st)}">${esc(st)}</span>${a ? `<span class="small">${esc(fmtTime(a.checked_at))}</span>` : ''}${locBadge(a)}</div></div>
+          <div class="pi-act">${ended ? '' : a ? `<button class="btn sm danger" data-undo="${a.id}">Hủy điểm danh</button>`
+            : `<button class="btn sm pink" data-manual="${esc(r.student_code)}" data-name="${esc(r.students?.full_name)}">Điểm danh tay</button>`}</div></div>`).join('')}
+        </div></div>`;
+    let flt = 'all';
+    const applyF = () => { const k = norm($('#fs', el).value);
+      $$('#pl .pi', el).forEach((d) => { d.classList.toggle('hide', !((!k || d.dataset.k.includes(k)) && (flt === 'all' || (flt === 'yes') === (d.dataset.has === '1')))); }); };
+    $('#fs', el).oninput = applyF;
+    $$('#fseg button', el).forEach((b) => { b.onclick = () => { flt = b.dataset.f; $$('#fseg button', el).forEach((x) => x.classList.toggle('on', x === b)); applyF(); }; });
     bindResetQR(el);
     $$('[data-manual]', el).forEach((b) => { b.onclick = () => busy(b, async () => {
       await q(db.from('attendance').insert({ session_id: id, student_code: b.dataset.manual, student_name: b.dataset.name, source: 'manual' }));
@@ -1316,6 +1369,13 @@
     await draw();
   }
 
+  // Ngày hôm nay (giờ VN) dạng YYYY-MM-DD, và lớp "đang học" = chưa kết thúc và chưa qua buổi cuối
+  function vnToday() {
+    const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function classIsActive(c, lastDate, today) { return !c.ended_at && (!lastDate || lastDate >= today); }
+
   // ================================================================ DANH SÁCH HỌC VIÊN
   async function viewRoster(el) {
     const isAdmin = me.role === 'admin';
@@ -1328,9 +1388,17 @@
     const students = await fetchAll(() => db.from('students').select('*').order('code'));
     const profs = await fetchAll(() => db.from('profiles').select('id, student_code, device_id, must_change_password').eq('role', 'student').order('id'));
     const pmap = {}; profs.forEach((p) => { if (p.student_code) pmap[p.student_code] = p; });
-    const enr = await fetchAll(() => db.from('class_students').select('student_code, classes(name, created_at)').order('student_code').order('class_id'));
-    const cmap = {};
-    enr.forEach((r) => { if (r.classes?.name) (cmap[r.student_code] = cmap[r.student_code] || []).push(r.classes); });
+    const enr = await fetchAll(() => db.from('class_students').select('student_code, classes(id, name, created_at, ended_at)').order('student_code').order('class_id'));
+    const lastBy = {};
+    (await fetchAll(() => db.from('class_sessions').select('class_id, session_date').order('id'))).forEach((x) => {
+      if (x.session_date && (!lastBy[x.class_id] || x.session_date > lastBy[x.class_id])) lastBy[x.class_id] = x.session_date; });
+    const todayVN = vnToday();
+    const cmap = {}; const doneN = {};
+    enr.forEach((r) => {
+      const c = r.classes; if (!c?.name) return;
+      if (classIsActive(c, lastBy[c.id], todayVN)) (cmap[r.student_code] = cmap[r.student_code] || []).push(c);
+      else doneN[r.student_code] = (doneN[r.student_code] || 0) + 1;
+    });
     Object.values(cmap).forEach((a) => a.sort((x, y) => (x.created_at < y.created_at ? 1 : -1)));
 
     function draw() {
@@ -1338,15 +1406,16 @@
       const list = students.filter((s) => !k || norm(s.code + s.full_name).includes(k));
       const shown = list.slice(0, 300);
       $('#t').innerHTML = `<p class="muted small">${list.length} học viên${list.length > 300 ? ' (hiển thị 300 đầu tiên, hãy tìm kiếm để lọc)' : ''}</p>
-        <div class="tbl-wrap"><table><tr><th>STT</th><th>Mã</th><th>Họ tên</th><th>Chức danh</th><th>Lớp đã tham gia</th><th></th></tr>
-        ${shown.map((s, i) => { const p = pmap[s.code]; return `<tr>
-          <td>${i + 1}</td><td>${esc(s.code)}</td><td>${esc(s.full_name)}</td><td>${esc(s.title)}</td>
-          <td>${(cmap[s.code] || []).map((c) => `<span class="badge">${esc(c.name)}</span>`).join(' ') || '<span class="muted">Chưa có lớp</span>'}</td>
-          <td class="act">${p ? `<button class="btn sm ghost" data-resetpw="${esc(s.code)}">Đặt lại MK</button>` : ''}
+        <div class="plist">
+        ${shown.map((s) => { const p = pmap[s.code]; return `<div class="pi">
+          <div class="pi-main"><b>${esc(s.full_name)}</b>
+            <div class="small muted">${esc(s.code)}${s.title ? ' · ' + esc(s.title) : ''}</div>
+            <div class="pi-st"><span class="small muted">Lớp đang học:</span> ${(cmap[s.code] || []).map((c) => `<span class="badge">${esc(c.name)}</span>`).join(' ') || '<span class="muted small">Không có</span>'}${doneN[s.code] ? `<span class="small muted">· đã học xong ${doneN[s.code]} lớp</span>` : ''}</div></div>
+          <div class="pi-act pi-full">${p ? `<button class="btn sm ghost" data-resetpw="${esc(s.code)}">Đặt lại MK</button>` : ''}
             ${p?.device_id ? `<button class="btn sm ghost" data-reset="${esc(s.code)}">Đặt lại thiết bị</button>` : ''}
             ${isAdmin && p ? `<button class="btn sm danger" data-deluser="${p.id}">Xóa tài khoản</button>` : ''}
-            ${isAdmin ? `<button class="btn sm danger" data-delstu="${esc(s.code)}">Xóa HV</button>` : ''}</td></tr>`; }).join('')}
-        </table></div>`;
+            ${isAdmin ? `<button class="btn sm danger" data-delstu="${esc(s.code)}">Xóa HV</button>` : ''}</div></div>`; }).join('')}
+        </div>`;
       $$('[data-reset]', el).forEach((b) => { b.onclick = () => busy(b, async () => {
         await q(db.rpc('reset_device', { p_student_code: b.dataset.reset })); toast('Đã đặt lại thiết bị', 'ok'); render(); }); });
       $$('[data-resetpw]', el).forEach((b) => { b.onclick = () => resetPassword(b, b.dataset.resetpw); });
@@ -1484,7 +1553,95 @@
         <div><label>Đến ngày học</label><input id="rt" type="date"></div></div>
       <div style="margin-top:14px"><button class="btn pink" id="go">Xuất Excel</button></div></div>`;
     $('#go').onclick = (e) => busy(e.target, () => exportReport($('#rc').value ? [$('#rc').value] : null, $('#rf').value, $('#rt').value));
+    studentClassCard(el, classes);
     if (me.role === 'admin') teachHoursCard(el);
+  }
+
+  // Báo cáo học viên - lớp: học viên đã học / đang học những lớp nào. Lọc theo thời gian, mã lớp, giảng viên, học viên
+  async function studentClassCard(el, classes) {
+    const box = document.createElement('div');
+    box.className = 'card';
+    const teachers = await q(db.rpc('list_teachers')).catch(() => []);
+    box.innerHTML = `<h2>Báo cáo học viên theo lớp</h2>
+      <p class="muted small">Danh sách học viên đã học và đang học những lớp nào. Mỗi mục lọc đều có thể để trống.</p>
+      <div class="grid2"><div><label>Mã lớp</label><select id="sc_c"><option value="">Tất cả</option>${classes.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
+        <div><label>Giảng viên</label><select id="sc_t"><option value="">Tất cả</option>${teachers.map((t) => `<option value="${esc(String(t.email).toLowerCase())}">${esc(t.full_name || t.email)}</option>`).join('')}</select></div>
+        <div><label>Từ ngày</label><input id="sc_f" type="date"></div>
+        <div><label>Đến ngày</label><input id="sc_to" type="date"></div>
+        <div><label>Học viên (mã hoặc tên)</label><input id="sc_s" placeholder="Để trống = tất cả"></div>
+        <div><label>Trạng thái lớp</label><select id="sc_st"><option value="">Tất cả</option><option value="act">Đang học</option><option value="done">Đã học xong</option></select></div>
+        <div><label>Sắp xếp theo</label><select id="sc_o"><option value="stu">Học viên</option><option value="cls">Mã lớp</option><option value="tch">Giảng viên</option><option value="time">Thời gian</option></select></div></div>
+      <div style="margin-top:14px"><button class="btn pink" id="sc_go">Xuất Excel</button></div>
+      <div class="small muted" style="margin-top:8px">Lớp tính vào khoảng thời gian nếu có buổi học nằm trong khoảng đó.</div>`;
+    el.appendChild(box);
+    $('#sc_go', box).onclick = (e) => busy(e.target, async () => {
+      const f = $('#sc_f', box).value, t = $('#sc_to', box).value, cid = $('#sc_c', box).value, tem = $('#sc_t', box).value;
+      const key = norm($('#sc_s', box).value.trim()), stf = $('#sc_st', box).value, ord = $('#sc_o', box).value;
+      let cq = db.from('classes').select('id, name, start_date, ended_at, class_types(name)'); if (cid) cq = cq.eq('id', cid);
+      const cls = await q(cq);
+      if (!cls.length) throw new Error('Không có lớp nào');
+      const sessions = await fetchAll(() => { const b = db.from('class_sessions').select('id, class_id, session_date, teacher_email, opened_at').order('id'); return cid ? b.eq('class_id', cid) : b; });
+      const roster = await fetchAll(() => { const b = db.from('class_students').select('class_id, students(code, full_name, title)').order('class_id').order('student_code'); return cid ? b.eq('class_id', cid) : b; });
+      const att = await fetchAll(() => { const b = db.from('attendance').select('session_id, student_code, class_sessions!inner(class_id)').order('id'); return cid ? b.eq('class_sessions.class_id', cid) : b; });
+      const tname = {}; teachers.forEach((x) => { tname[String(x.email).toLowerCase()] = x.full_name || x.email; });
+      const attCnt = {}; const sc = {}; sessions.forEach((x) => { sc[x.id] = x.class_id; });
+      att.forEach((a) => { const k = sc[a.session_id] + '|' + a.student_code; attCnt[k] = (attCnt[k] || 0) + 1; });
+      const today = vnToday();
+      const info = {};
+      cls.forEach((c) => {
+        const ss = sessions.filter((x) => x.class_id === c.id);
+        const dates = ss.map((x) => x.session_date).filter(Boolean).sort();
+        const first = dates[0] || c.start_date || '', last = dates[dates.length - 1] || '';
+        info[c.id] = { c, ss, first, last, active: classIsActive(c, last, today),
+          teachers: Array.from(new Set(ss.map((x) => String(x.teacher_email || '').toLowerCase()).filter(Boolean))),
+          inRange: !f && !t ? true : ss.some((x) => x.session_date && (!f || x.session_date >= f) && (!t || x.session_date <= t)) };
+      });
+      const rows = [];
+      roster.forEach((r) => {
+        const st = r.students; if (!st) return;
+        const i = info[r.class_id]; if (!i || !i.inRange) return;
+        if (tem && !i.teachers.includes(tem)) return;
+        if (stf && (stf === 'act') !== i.active) return;
+        if (key && !norm(st.code + ' ' + st.full_name).includes(key)) return;
+        const opened = i.ss.filter((x) => x.opened_at).length;
+        const present = attCnt[r.class_id + '|' + st.code] || 0;
+        rows.push({ code: st.code, name: st.full_name, title: st.title || '', cls: i.c.name, type: i.c.class_types?.name || '',
+          tch: i.teachers.map((e) => tname[e] || e).join(', '), first: i.first, last: i.last,
+          status: i.c.ended_at ? 'Đã kết thúc' : i.active ? 'Đang học' : 'Đã học xong', active: i.active,
+          present: present + '/' + i.ss.length, absent: Math.max(0, opened - present) });
+      });
+      if (!rows.length) throw new Error('Không có dữ liệu phù hợp bộ lọc');
+      const vi = (a, b) => String(a).localeCompare(String(b), 'vi');
+      const cmp = { stu: (a, b) => vi(a.name, b.name) || vi(a.cls, b.cls), cls: (a, b) => vi(a.cls, b.cls) || vi(a.name, b.name),
+        tch: (a, b) => vi(a.tch, b.tch) || vi(a.cls, b.cls) || vi(a.name, b.name), time: (a, b) => vi(b.first, a.first) || vi(a.cls, b.cls) || vi(a.name, b.name) }[ord];
+      rows.sort(cmp);
+      const by = {};
+      rows.forEach((r) => { const o = by[r.code] = by[r.code] || { code: r.code, name: r.name, title: r.title, act: [], done: [] }; (r.active ? o.act : o.done).push(r.cls); });
+      const sum = Object.values(by).sort((a, b) => vi(a.name, b.name)).map((o) => ({ code: o.code, name: o.name, title: o.title,
+        nact: o.act.length, ndone: o.done.length, act: o.act.join(', '), done: o.done.join(', ') }));
+      const fmt = (d) => (d ? fmtDate(d) : '');
+      const filt = [];
+      if (cid) filt.push('Lớp ' + (cls[0] ? cls[0].name : ''));
+      if (tem) filt.push('Giảng viên ' + (tname[tem] || tem));
+      if (f || t) filt.push(`Thời gian ${f ? fmtDate(f) : '...'} → ${t ? fmtDate(t) : '...'}`);
+      if (key) filt.push('Học viên "' + $('#sc_s', box).value.trim() + '"');
+      if (stf) filt.push(stf === 'act' ? 'Đang học' : 'Đã học xong');
+      const infoRows = [['Bộ lọc', filt.join(' · ') || 'Tất cả'], ['Số học viên', String(sum.length)], ['Số lượt tham gia lớp', String(rows.length)]];
+      const d = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      await saveXlsx(`BaoCao_HocVien_Lop_${d}.xlsx`, [
+        { name: 'Học viên - Lớp', title: 'Danh sách học viên theo lớp', info: infoRows,
+          rows: rows.map((r) => ({ ...r, first: fmt(r.first), last: fmt(r.last) })),
+          cols: [{ header: 'STT', key: '#', width: 6, align: 'center' }, { header: 'Mã HV', key: 'code', width: 13, align: 'center' }, { header: 'Họ và tên', key: 'name', width: 28 },
+            { header: 'Chức danh', key: 'title', width: 18 }, { header: 'Mã lớp', key: 'cls', width: 26 }, { header: 'Loại lớp', key: 'type', width: 16 },
+            { header: 'Giảng viên', key: 'tch', width: 24 }, { header: 'Từ ngày', key: 'first', width: 12, align: 'center' }, { header: 'Đến ngày', key: 'last', width: 12, align: 'center' },
+            { header: 'Trạng thái', key: 'status', width: 13, align: 'center' }, { header: 'Có mặt', key: 'present', width: 9, align: 'center' }, { header: 'Vắng', key: 'absent', width: 8, align: 'center' }] },
+        { name: 'Tổng hợp học viên', title: 'Tổng hợp theo học viên', info: infoRows, rows: sum,
+          cols: [{ header: 'STT', key: '#', width: 6, align: 'center' }, { header: 'Mã HV', key: 'code', width: 13, align: 'center' }, { header: 'Họ và tên', key: 'name', width: 28 },
+            { header: 'Chức danh', key: 'title', width: 18 }, { header: 'Số lớp đang học', key: 'nact', width: 11, align: 'center' }, { header: 'Số lớp đã học xong', key: 'ndone', width: 12, align: 'center' },
+            { header: 'Lớp đang học', key: 'act', width: 40 }, { header: 'Lớp đã học xong', key: 'done', width: 40 }] },
+      ]);
+      toast(`Đã xuất ${sum.length} học viên, ${rows.length} lượt tham gia lớp`, 'ok');
+    });
   }
 
   // Báo cáo giờ dạy giảng viên theo tháng (admin). Ca sáng = 4 giờ, chiều/tối = 5 giờ. Chỉ tính buổi đã mở điểm danh.

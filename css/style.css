@@ -319,7 +319,7 @@ body, body:has(.auth) { background: transparent !important; }
 .cl-type { margin: 12px 0 6px; font-weight: 700; color: var(--navy); font-size: 14px; letter-spacing: .3px; }
 .cl-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
 .cl-main { min-width: 0; }
-.sgrid { display: flex; gap: 4px; overflow-x: auto; max-width: 216px; padding-bottom: 4px; -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; }
+.sgrid { display: flex; gap: 4px; overflow-x: auto; max-width: 100%; padding-bottom: 4px; -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; }
 .sc { flex: 0 0 32px; text-align: center; border-radius: 6px; font-size: 13px; font-weight: 700; padding: 2px 0; line-height: 1.15; scroll-snap-align: start; }
 .sc i { display: block; font-style: normal; font-size: 9px; font-weight: 500; opacity: .75; }
 .sc.ok { background: #e3f6ec; color: var(--ok); }
@@ -374,3 +374,36 @@ main, #app { max-width: 100vw; overflow-x: clip; }
 .who .name { flex: 1 1 auto; min-width: 0; max-width: 130px; }
 .who .badge, .who .btn { flex: 0 0 auto; white-space: nowrap; }
 @media (max-width: 420px) { .who .name { display: none; } }
+
+/* ===== v33: danh sách dạng thẻ, không tràn ngang ===== */
+.btnrow { flex-wrap: wrap; }
+.btnrow .btn { white-space: normal; flex: 1 1 calc(50% - 8px); }
+.card, .modal-box { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.modal { width: 100%; max-width: 100vw; }
+.modal-box { max-width: min(520px, 100%); }
+.modal-box input[type=file] { max-width: 100%; }
+.plist { display: grid; gap: 8px; margin-top: 10px; }
+.pi { display: flex; gap: 10px; justify-content: space-between; align-items: center; flex-wrap: wrap;
+  padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.7); border: 1px solid rgba(0,47,114,.08); }
+.pi-main { min-width: 0; flex: 1 1 180px; }
+.pi-main b { color: var(--navy); }
+.pi-st { margin-top: 4px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 13px; }
+.pi-act { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.pi-act .btn { white-space: normal; }
+.pi-full { flex: 1 1 100%; }
+.scard { padding: 12px; border-radius: 12px; background: rgba(255,255,255,.7); border: 1px solid rgba(0,47,114,.08); margin-top: 8px; }
+.scard .grid2 { margin-top: 4px; gap: 8px; }
+.scard input[type=date], .scard select { width: 100%; max-width: 100%; }
+.seg { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.seg button { border: 1px solid var(--line); background: #fff; color: var(--navy); border-radius: 99px; padding: 5px 12px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.seg button.on { background: var(--navy); color: #fff; border-color: var(--navy); }
+.pick { max-height: 260px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; margin-top: 8px; background: #fff; }
+.pk { display: flex !important; gap: 10px; align-items: center; margin: 0 !important; padding: 8px 10px; border-bottom: 1px solid #eef0f6; font-weight: 500 !important; cursor: pointer; }
+.pk input { width: auto; flex: 0 0 auto; }
+.pk small { display: block; color: var(--muted); font-weight: 400; }
+.pk.dis { opacity: .55; cursor: default; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.chips .badge { cursor: pointer; }
+details.more { margin-top: 12px; }
+details.more summary { cursor: pointer; color: var(--navy); font-weight: 600; }
+.sgrid { flex-wrap: wrap; overflow: visible; }
