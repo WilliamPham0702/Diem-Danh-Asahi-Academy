@@ -282,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-63';
+  const APP_VERSION = '2026.11.28-64';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -1050,8 +1050,9 @@
         <label>Ngày tốt nghiệp <span class="muted small">(tự tính, có thể chọn ngày khác)</span></label><input id="cg" type="date" required>
         <label>Địa điểm học</label><input id="cl" placeholder="VD: Phòng 301, Asahi Life - 123 Nguyễn Huệ, Q.1">
         <label style="display:flex;gap:8px;align-items:center;font-weight:500"><input type="checkbox" id="ce" style="width:auto"> Mở đăng ký cho học viên tự đăng ký lớp này</label>
-        <label>Danh sách học viên (file Excel)</label><input id="cx" type="file" accept=".xlsx,.xls,.csv">
-        <div class="small muted">Cột: Mã học viên, Họ và tên, Chức danh. Cột Mã học viên nên để định dạng Text để giữ số 0 ở đầu. <a href="#" id="tpl">Tải file mẫu</a></div>
+        <div class="cset" style="border:1px solid #002F72;border-radius:8px;padding:8px;margin-top:8px"><label style="margin-top:0">📎 File Hồ sơ lớp (ưu tiên)</label><input id="cx" type="file" accept=".xlsx,.xls,.csv">
+        <div class="small muted">Chọn file Hồ sơ lớp: web tự điền tên lớp, khoá học, ngày, địa điểm, GVCN, danh sách học viên (M1 / M2 mới) và kết quả MOF. Cũng nhận file danh sách học viên thường.</div></div>
+        <div class="small muted">File thường: cột Mã học viên, Họ và tên, Chức danh. <a href="#" id="tpl">Tải file mẫu</a></div>
         <div id="cinfo" class="small" style="margin-top:6px"></div>
         <div class="row" style="margin-top:14px"><button class="btn pink" id="ok">Tạo lớp</button>
           <button type="button" class="btn ghost" id="cancel">Hủy</button></div>
