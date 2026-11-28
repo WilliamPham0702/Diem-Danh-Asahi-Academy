@@ -252,7 +252,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-27';
+  const APP_VERSION = '2026.11.28-28';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -707,12 +707,18 @@
 
   async function readStudentsFile(file) {
     const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
-    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: false });
+    const grid = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '', raw: false });
+    // Tìm dòng tiêu đề cột (cho phép file có tiêu đề/ghi chú phía trên, như file mẫu Asahi)
+    let hi = grid.findIndex((row, i) => i < 20 && row.some((c) => { const k = norm(String(c)); return k.includes('mahocvien') || k === 'mahv' || k === 'mshv'; })
+      && row.some((c) => { const k = norm(String(c)); return k.includes('hoten') || k.includes('hovaten') || k.includes('tenhocvien'); }));
+    if (hi < 0) hi = 0;
+    const heads = (grid[hi] || []).map((h) => String(h).trim());
+    const rows = grid.slice(hi + 1).map((arr) => { const o = {}; heads.forEach((h, j) => { if (h) o[h] = arr[j] ?? ''; }); return o; });
     const seen = new Set(); const ok = []; const bad = []; let skipped = 0;
     rows.forEach((r, i) => {
       if (!Object.values(r).some((v) => String(v).trim())) return; // dòng trống
       const s = mapRow(r);
-      if (!s.code || !s.full_name) { bad.push(i + 2); return; }
+      if (!s.code || !s.full_name) { bad.push(i + hi + 2); return; }
       if (seen.has(s.code)) { skipped++; return; }
       seen.add(s.code); ok.push(s);
     });
@@ -744,14 +750,16 @@
     return codes.filter((c) => !found.has(c));
   }
 
-  function downloadTemplate() {
-    const ws = XLSX.utils.aoa_to_sheet([
-      ['Mã học viên', 'Họ và tên', 'Chức danh'],
-      ['000000089', 'Nguyễn Văn A', 'Agency Leader'],
-    ]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Danh sách');
-    XLSX.writeFile(wb, 'Mau_danh_sach_hoc_vien.xlsx');
+  async function downloadTemplate() {
+    try {
+      await saveXlsx('Mau_danh_sach_hoc_vien.xlsx', [{
+        name: 'Danh sách', title: 'Danh sách học viên', nosign: true,
+        info: [['Hướng dẫn', 'Điền từ dòng bên dưới tiêu đề cột. Mã học viên giữ nguyên số 0 ở đầu. Không xóa dòng tiêu đề cột màu xanh.'],
+          ['Bắt buộc', 'Mã học viên và Họ và tên. Chức danh có thể để trống.']],
+        cols: [{ header: 'Mã học viên', key: 'code', width: 18, align: 'center', text: true }, { header: 'Họ và tên', key: 'name', width: 34 }, { header: 'Chức danh', key: 'title', width: 28 }],
+        rows: [{ code: '000000089', name: 'Nguyễn Văn A', title: 'Agency Leader' }],
+      }]);
+    } catch (e) { toast(e.message || 'Không tạo được file mẫu', 'err'); }
   }
 
   // ================================================================ GIẢNG VIÊN: danh sách lớp
@@ -1322,7 +1330,9 @@
       (sh.info || []).forEach(([k, v]) => {
         const c = ws.getCell(r, 1);
         c.value = { richText: [{ text: k + ': ', font: { name: FONT, size: 10, bold: true, color: { argb: NAVY } } }, { text: String(v), font: { name: FONT, size: 10 } }] };
-        c.alignment = { horizontal: 'left', vertical: 'middle' }; mergeRow(r); r++;
+        c.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true }; mergeRow(r);
+        const tw = sh.cols.reduce((a, x) => a + (x.width || 14), 0);
+        ws.getRow(r).height = Math.max(18, Math.ceil((k.length + String(v).length + 2) / (tw * 0.95)) * 16); r++;
       });
       r++;
       const hr = r;
@@ -1342,6 +1352,7 @@
           const cell = rr.getCell(i + 1);
           const v = c.key === '#' ? (bold ? '' : idx + 1) : row[c.key];
           cell.value = v === undefined || v === null ? '' : v;
+          if (c.text) cell.numFmt = '@';
           const col = c.color && v ? c.color(v) : null;
           cell.font = { name: FONT, size: 10, bold: !!bold || !!col, ...(col ? { color: { argb: col } } : {}) };
           cell.alignment = { horizontal: c.align || 'left', vertical: 'middle', wrapText: true };
@@ -1358,7 +1369,7 @@
       ws.pageSetup.printTitlesRow = `${hr}:${hr}`;
       // Chữ ký
       r += 1;
-      if (n >= 2) {
+      if (n >= 2 && !sh.nosign) {
         const mid = Math.max(1, Math.floor(n / 2));
         const sign = (c1, c2, row, text, font) => { if (c2 > c1) ws.mergeCells(row, c1, row, c2); const c = ws.getCell(row, c1); c.value = text; c.font = { name: FONT, size: 10, ...font }; c.alignment = { horizontal: 'center' }; };
         sign(mid + 1, n, r, `TP. Hồ Chí Minh, ngày ${dd} tháng ${mm} năm ${nowVN.getFullYear()}`, { italic: true });
