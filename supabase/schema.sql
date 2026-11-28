@@ -1145,3 +1145,16 @@ grant execute on function public.search_students(text, uuid) to authenticated;
 -- v53: ngày học viên vào lớp (buổi mở trước ngày này không tính vắng); dòng cũ để null = tính từ đầu
 alter table public.class_students add column if not exists added_at timestamptz;
 alter table public.class_students alter column added_at set default now();
+
+-- v54: check_in báo "Bạn chưa đăng ký lớp này" + chặn học viên ngoài module của buổi (patch hàm check_in hiện có)
+do $$
+declare d text; old1 text; new1 text;
+begin
+  select pg_get_functiondef(p.oid) into d from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname='check_in';
+  old1 := E'  if not exists (select 1 from public.class_students where class_id = sess.class_id and student_code = p.student_code) then\n    return jsonb_build_object(''status'', ''not_in_class'', ''message'', ''Bạn không có trong danh sách lớp này'');\n  end if;\n';
+  new1 := E'  if not exists (select 1 from public.class_students where class_id = sess.class_id and student_code = p.student_code) then\n    return jsonb_build_object(''status'', ''not_in_class'', ''message'', ''Bạn chưa đăng ký lớp này'');\n  end if;\n  if exists (select 1 from public.class_students cs where cs.class_id = sess.class_id and cs.student_code = p.student_code\n      and cs.node_ids is not null and cardinality(cs.node_ids) > 0\n      and not (sess.node_id is not null and (sess.node_id = any(cs.node_ids)\n           or exists (select 1 from public.course_nodes n where n.id = sess.node_id and n.parent_id = any(cs.node_ids))))) then\n    return jsonb_build_object(''status'', ''not_in_module'', ''message'', ''Bạn không thuộc module này nên không điểm danh được'');\n  end if;\n';
+  if position(old1 in d) > 0 then
+    d := replace(replace(d, old1, new1), 'c.name as class_name,', 's.node_id, c.name as class_name,');
+    execute d;
+  end if;
+end $$;
