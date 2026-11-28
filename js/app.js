@@ -282,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-58';
+  const APP_VERSION = '2026.11.28-59';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -1088,10 +1088,11 @@
       <div class="card"><h3>Các buổi học</h3>
         <div class="small muted">Chọn ngày, ca, giảng viên, trợ giảng ngay trên bảng. Muốn điểm danh tay hoặc hủy điểm danh: bấm <b>Chi tiết</b>. Ca chỉ đổi được khi buổi chưa mở QR.</div>
         <div class="tbl-wrap"><table class="ctab stab">
-          <thead><tr><th>STT</th><th>Buổi</th><th>Ngày</th><th>Ca</th><th>GV</th><th>TG</th><th>Trạng thái</th><th>Có mặt</th><th></th></tr></thead>
+          <thead><tr><th>STT</th><th>Buổi</th><th>Mã khoá</th><th>Ngày</th><th>Ca</th><th>GV</th><th>TG</th><th>Trạng thái</th><th>Có mặt</th><th></th></tr></thead>
           <tbody>${sessions.map((s, i) => `<tr>
             <td class="n">${i + 1}</td>
-            <td class="s-bc"><b>Buổi ${s.session_no}</b>${nodeOfSession(s) ? ` <span class="badge">${esc(nodeOfSession(s))}</span>` : ''}<div class="small muted s-ct">${esc(s.content || '')}</div></td>
+            <td class="s-bc"><b>Buổi ${s.session_no}</b><div class="small muted s-ct">${esc(s.content || '')}</div></td>
+            <td class="cd">${nodeOfSession(s) ? esc(nodeOfSession(s)) : '—'}</td>
             <td><input type="date" value="${s.session_date || ''}" data-date="${s.id}"></td>
             <td><select data-shift="${s.id}"${ended || s.opened_at ? ' disabled' : ''}><option value=""${s.shift ? '' : ' selected'}>Chọn ca</option>${Object.keys(SHIFT_LABEL).map((k) => `<option value="${k}"${s.shift === k ? ' selected' : ''}>${SHIFT_LABEL[k]}</option>`).join('')}</select></td>
             <td><select data-teacher="${s.id}"><option value="">(Chưa gán)</option>${teachers.map((t) => `<option value="${esc(t.email)}"${t.email === String(s.teacher_email || '').toLowerCase() ? ' selected' : ''}>${esc(t.full_name || t.email)}${t.has_account ? '' : ' (chưa tạo TK)'}</option>`).join('')}</select></td>
