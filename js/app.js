@@ -252,7 +252,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-25';
+  const APP_VERSION = '2026.11.28-26';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -1290,6 +1290,56 @@
         <div><label>Đến ngày học</label><input id="rt" type="date"></div></div>
       <div style="margin-top:14px"><button class="btn pink" id="go">Xuất Excel</button></div></div>`;
     $('#go').onclick = (e) => busy(e.target, () => exportReport($('#rc').value ? [$('#rc').value] : null, $('#rf').value, $('#rt').value));
+    if (me.role === 'admin') teachHoursCard(el);
+  }
+
+  // Báo cáo giờ dạy giảng viên theo tháng (admin). Ca sáng = 4 giờ, chiều/tối = 5 giờ. Chỉ tính buổi đã mở điểm danh.
+  function teachHoursCard(el) {
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
+    const ym = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    const box = document.createElement('div');
+    box.className = 'card';
+    box.innerHTML = `<h2>Báo cáo giờ dạy giảng viên</h2>
+      <p class="muted small">Tính các buổi đã mở điểm danh. Ca sáng 4 giờ, ca chiều và tối 5 giờ.</p>
+      <div class="grid2"><div><label>Tháng</label><input id="thm" type="month" value="${ym}"></div>
+        <div style="align-self:end"><button class="btn pink" id="thgo">Xem báo cáo</button></div></div>
+      <div id="thout" style="margin-top:12px"></div>`;
+    el.appendChild(box);
+    let data = null, month = ym;
+    const SH = { sang: 'Sáng', chieu: 'Chiều', toi: 'Tối' };
+    const load = () => busy($('#thgo', box), async () => {
+      month = $('#thm', box).value || ym;
+      const [y, m] = month.split('-').map(Number);
+      const last = new Date(y, m, 0).getDate();
+      data = await q(db.rpc('teaching_hours', { p_from: `${month}-01`, p_to: `${month}-${String(last).padStart(2, '0')}` }));
+      draw();
+    });
+    const draw = () => {
+      const out = $('#thout', box);
+      if (!data.length) { out.innerHTML = '<p class="muted">Tháng này chưa có buổi dạy nào được mở điểm danh.</p>'; return; }
+      const by = {};
+      data.forEach((r) => { const k = r.teacher_email || '-'; (by[k] = by[k] || { name: r.teacher_name, rows: [] }).rows.push(r); });
+      const list = Object.values(by).map((t) => ({ ...t, hours: t.rows.reduce((a, r) => a + r.hours, 0) })).sort((a, b) => b.hours - a.hours);
+      const max = list[0].hours, total = list.reduce((a, t) => a + t.hours, 0);
+      out.innerHTML = `<div class="small" style="margin-bottom:8px">Tổng: <b>${data.length}</b> buổi · <b>${total}</b> giờ · <b>${list.length}</b> giảng viên</div>
+        <div class="tbl-wrap"><table><tr><th>#</th><th>Giảng viên</th><th>Số buổi</th><th>Tổng giờ</th><th style="min-width:120px"></th></tr>
+        ${list.map((t, i) => `<tr><td>${i + 1}</td><td><b>${esc(t.name)}</b></td><td>${t.rows.length}</td><td><b>${t.hours}</b></td>
+          <td><div class="bar"><i style="width:${Math.round(100 * t.hours / max)}%"></i></div></td></tr>`).join('')}</table></div>
+        ${list.map((t) => `<details style="margin-top:8px"><summary><b>${esc(t.name)}</b> · ${t.rows.length} buổi · ${t.hours} giờ</summary>
+          <div class="tbl-wrap"><table><tr><th>Ngày</th><th>Ca</th><th>Lớp</th><th>Buổi</th><th>Giờ</th></tr>
+          ${t.rows.map((r) => `<tr><td>${fmtDate(r.session_date)}</td><td>${SH[r.shift] || ''}</td><td>${esc(r.class_name)}</td><td>${r.session_no}</td><td>${r.hours}</td></tr>`).join('')}</table></div></details>`).join('')}
+        <div style="margin-top:12px"><button class="btn ghost" id="thx">Xuất Excel</button></div>`;
+      $('#thx', box).onclick = () => {
+        const sum = list.map((t, i) => ({ 'STT': i + 1, 'Giảng viên': t.name, 'Email': t.rows[0].teacher_email, 'Số buổi': t.rows.length, 'Tổng giờ': t.hours }));
+        sum.push({ 'STT': '', 'Giảng viên': 'TỔNG', 'Email': '', 'Số buổi': data.length, 'Tổng giờ': total });
+        const detail = list.flatMap((t) => t.rows.map((r) => ({ 'Giảng viên': t.name, 'Ngày': fmtDate(r.session_date), 'Ca': SH[r.shift] || '', 'Lớp': r.class_name, 'Buổi': r.session_no, 'Nội dung': r.content || '', 'Giờ': r.hours })));
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sum), 'Tổng hợp');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail), 'Chi tiết');
+        XLSX.writeFile(wb, `BaoCao_GioDay_${month}.xlsx`);
+      };
+    };
+    $('#thgo', box).onclick = load;
   }
 
   async function exportReport(classIds, from, to) {

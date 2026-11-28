@@ -751,3 +751,5 @@ alter table public.class_sessions add column if not exists qr_reset_until timest
 -- v21: dia diem hoc, mo dang ky, trang chu hoc vien (da ap dung tren DB)
 -- alter table classes add column location text, add column open_enrollment boolean not null default false;
 -- Ham: list_open_classes(), enroll_class(p_class uuid), my_open_sessions(); check_in khong con chan must_change_password.
+
+-- v26: bao cao gio day (admin): ham teaching_hours(p_from date, p_to date), sang=4h, chieu/toi=5h (da ap dung tren DB)
