@@ -282,7 +282,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-61';
+  const APP_VERSION = '2026.11.28-62';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -775,33 +775,39 @@
   const norm = (s) => String(s).toLowerCase().replace(/đ/g, 'd').normalize('NFD')
     .replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
 
-  function mapRow(row) {
+  function mapRow(row, hoso) {
     const out = { code: '', full_name: '', title: '' };
     for (const key of Object.keys(row)) {
       const k = norm(key); const v = String(row[key] ?? '').trim();
       if (!v) continue;
       if (k.includes('email') || k.includes('mail')) continue; // không lưu email
       else if (k.includes('quanly') || k.includes('manager')) continue; // không lưu cấp quản lý (kể cả cột gộp "cấp quản lý và chức danh")
-      else if (k.includes('chucdanh') || k.includes('chucvu') || k === 'title') out.title = v;
-      else if (['mahocvien', 'mahv', 'mshv', 'ma', 'code', 'mahocvien'].includes(k) || k.includes('mahocvien')) out.code = normCode(v);
+      else if (k.includes('chucdanh') || k.includes('chucvu') || k === 'title') { if (!hoso) out.title = v; } // file hồ sơ lớp: chỉ lấy mã + họ tên
+      else if (['mahocvien', 'mahv', 'mshv', 'masotam', 'maso', 'ma', 'code'].includes(k) || k.includes('mahocvien')) out.code = normCode(v);
       else if (k.includes('tenhocvien') || k.includes('hoten') || k.includes('hovaten') || k === 'ten' || k === 'name' || k === 'fullname') out.full_name = properName(v);
     }
     return out;
   }
 
+  // Nhận cả file mẫu của mình lẫn file "Hồ sơ lớp" nhiều sheet (lấy sheet DS HOC VIEN: Mã số tạm + Họ và tên)
+  const isCodeHead = (k) => k.includes('mahocvien') || k === 'mahv' || k === 'mshv' || k === 'masotam' || k === 'maso';
+  const isNameHead = (k) => k.includes('hoten') || k.includes('hovaten') || k.includes('tenhocvien');
+  const findHeadRow = (grid) => grid.findIndex((row, i) => i < 20 && row.some((c) => isCodeHead(norm(String(c)))) && row.some((c) => isNameHead(norm(String(c)))));
   async function readStudentsFile(file) {
     const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
-    const grid = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '', raw: false });
-    // Tìm dòng tiêu đề cột (cho phép file có tiêu đề/ghi chú phía trên, như file mẫu Asahi)
-    let hi = grid.findIndex((row, i) => i < 20 && row.some((c) => { const k = norm(String(c)); return k.includes('mahocvien') || k === 'mahv' || k === 'mshv'; })
-      && row.some((c) => { const k = norm(String(c)); return k.includes('hoten') || k.includes('hovaten') || k.includes('tenhocvien'); }));
+    const pref = (n) => { const k = norm(n); return k.includes('dshocvien') || k.includes('danhsachhocvien') ? 0 : k.includes('hocvien') ? 1 : 2; };
+    const names = wb.SheetNames.slice().sort((x, y) => pref(x) - pref(y));
+    let grid = null; let hi = -1;
+    for (const n of names) { const g = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '', raw: false }); const h = findHeadRow(g); if (h >= 0) { grid = g; hi = h; break; } }
+    if (!grid) grid = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '', raw: false });
     if (hi < 0) hi = 0;
+    const hoso = (grid[hi] || []).some((c) => norm(String(c)) === 'masotam');
     const heads = (grid[hi] || []).map((h) => String(h).trim());
     const rows = grid.slice(hi + 1).map((arr) => { const o = {}; heads.forEach((h, j) => { if (h) o[h] = arr[j] ?? ''; }); return o; });
     const seen = new Set(); const ok = []; const bad = []; let skipped = 0;
     rows.forEach((r, i) => {
       if (!Object.values(r).some((v) => String(v).trim())) return; // dòng trống
-      const s = mapRow(r);
+      const s = mapRow(r, hoso);
       if (!s.code || !s.full_name) { bad.push(i + hi + 2); return; }
       if (seen.has(s.code)) { skipped++; return; }
       seen.add(s.code); ok.push(s);
@@ -809,7 +815,7 @@
     // File lỗi thì không cho tiếp tục (không tạo lớp, không nhập)
     if (!ok.length) throw new Error('File không có học viên hợp lệ. Cần các cột "Mã học viên" và "Họ và tên" (dòng đầu là tiêu đề cột).');
     if (bad.length) throw new Error(`File lỗi: dòng ${bad.slice(0, 8).join(', ')}${bad.length > 8 ? '...' : ''} thiếu mã học viên hoặc họ tên. Hãy sửa file rồi tải lại.`);
-    return { rows: ok, skipped };
+    return { rows: ok, skipped, hoso };
   }
 
   async function importStudents(file) {
@@ -1237,7 +1243,7 @@
         <div id="npbox"></div>
         <div class="cset" style="margin-top:10px"><b>1. Up từ file Excel</b> <span class="badge ok">Ưu tiên</span>
           <input id="ax" type="file" accept=".xlsx,.xls,.csv" style="margin-top:6px">
-          <div class="small muted"><a href="#" id="tpl">Tải file mẫu</a></div></div>
+          <div class="small muted">Nhận luôn file <b>Hồ sơ lớp</b> có sẵn (tự lấy sheet DS HOC VIEN: Mã số tạm + Họ và tên), không cần chuyển mẫu. <a href="#" id="tpl">Tải file mẫu</a></div></div>
         <div class="cset" style="margin-top:10px"><b>2. Hoặc tìm trong kho học viên</b>
           <input id="as" placeholder="Gõ tên hoặc mã (từ 2 ký tự)..." autocomplete="off" style="margin-top:6px">
           <div class="chips" id="achips"></div>
