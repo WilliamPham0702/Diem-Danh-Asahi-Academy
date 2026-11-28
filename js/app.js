@@ -252,7 +252,7 @@
       <h1>${h[1]}</h1>
       <p>${h[2]} · Xin chào, <b>${esc(first)}</b></p></div></section>`;
   }
-  const APP_VERSION = '2026.11.28-22';
+  const APP_VERSION = '2026.11.28-23';
   function footerHtml() {
     return `<footer class="foot"><div class="foot-in">${logoHtml(28)}
       <p>Asahi Academy · Training Delivery</p>
@@ -468,6 +468,18 @@
     ['努力は裏切らない', 'Doryoku wa uragiranai', 'Nỗ lực sẽ không phụ lòng người.'],
     ['塵も積もれば山となる', 'Chiri mo tsumoreba yama to naru', 'Tích tiểu thành đại.'],
     ['急がば回れ', 'Isogaba maware', 'Chậm mà chắc, cẩn thận sẽ đến đích nhanh hơn.'],
+    ['おもてなしの心', 'Omotenashi no kokoro', 'Tấm lòng đón tiếp chân thành, không mong đền đáp.'],
+    ['心を込めて', 'Kokoro o komete', 'Làm mọi việc bằng cả tấm lòng.'],
+    ['笑顔は最高のおもてなし', 'Egao wa saikō no omotenashi', 'Nụ cười là cách đón tiếp đẹp nhất.'],
+    ['思いやり', 'Omoiyari', 'Biết nghĩ cho người khác, đó là nền tảng của sự phục vụ.'],
+    ['気配り', 'Kikubari', 'Chu đáo, để ý những điều nhỏ nhất vì người đối diện.'],
+    ['相手の立場に立って', 'Aite no tachiba ni tatte', 'Đặt mình vào vị trí của người đối diện.'],
+    ['誠心誠意', 'Seishin seii', 'Hết lòng, chân thành trong từng việc làm.'],
+    ['感謝の気持ち', 'Kansha no kimochi', 'Giữ lòng biết ơn mỗi ngày.'],
+    ['三方よし', 'Sanpō yoshi', 'Tốt cho mình, tốt cho khách hàng, tốt cho xã hội.'],
+    ['袖振り合うも多生の縁', 'Sode furiau mo tashō no en', 'Chạm vai nhau thoáng qua cũng là duyên.'],
+    ['実るほど頭を垂れる稲穂かな', 'Minoru hodo kōbe o tareru inaho kana', 'Lúa càng chín càng cúi đầu: càng giỏi càng khiêm tốn.'],
+    ['ありがとうの一言', 'Arigatō no hitokoto', 'Một lời cảm ơn có thể làm ấm cả một ngày.'],
   ];
   function quoteHtml() {
     let i = Math.floor(Math.random() * QUOTES.length);
